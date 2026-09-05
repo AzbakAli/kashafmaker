@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  OPERATOR
+}
+
+enum DriverStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ASSIGNED
+  MAINTENANCE
+  INACTIVE
+}
+
+enum RideStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum KashafDocumentStatus {
+  DRAFT
+  GENERATED
+  ARCHIVED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  role          UserRole @default(OPERATOR)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  auditLogs     AuditLog[]
+}
+
+model Company {
+  id                     String   @id @default(cuid())
+  name                   String
+  nameAr                 String?
+  commercialRegistration String?
+  vatNumber              String?
+  phone                  String?
+  email                  String?
+  address                String?
+  city                   String?
+  country                String   @default("Saudi Arabia")
+  logoPath               String?
+  additionalInfo         String?
+  isDefault              Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model Driver {
+  id              String       @id @default(cuid())
+  name            String
+  nameAr          String?
+  iqamaNumber     String?
+  phone           String?
+  nationality     String?
+  licenseNumber   String?
+  licenseExpiry   DateTime?
+  status          DriverStatus @default(ACTIVE)
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  assignments     DriverVehicleAssignment[]
+  rides           Ride[]
+}
+
+model Vehicle {
+  id                 String        @id @default(cuid())
+  vehicleType        String
+  make               String
+  model              String
+  plateNumber        String        @unique
+  registrationNumber String?
+  vehicleId          String?
+  year               Int?
+  color              String?
+  capacity           Int?
+  status             VehicleStatus @default(AVAILABLE)
+  notes              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  assignments        DriverVehicleAssignment[]
+  rides              Ride[]
+}
+
+model DriverVehicleAssignment {
+  id         String    @id @default(cuid())
+  driverId   String
+  vehicleId  String
+  assignedAt DateTime  @default(now())
+  endedAt    DateTime?
+  isActive   Boolean   @default(true)
+  driver     Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, isActive])
+  @@index([vehicleId, isActive])
+}
+
+model Passenger {
+  id             String           @id @default(cuid())
+  fullName       String
+  passportNumber String?
+  nationality    String?
+  gender         Gender?
+  visaType       String?
+  iqamaNumber    String?
+  phone          String?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  ridePassengers RidePassenger[]
+}
+
+model Ride {
+  id              String         @id @default(cuid())
+  rideNumber      String         @unique
+  date            DateTime
+  time            String
+  pickup          String
+  destination     String
+  intermediateStops String?
+  tripType        String?
+  notes           String?
+  status          RideStatus     @default(SCHEDULED)
+  driverId        String?
+  vehicleId       String?
+  driverSnapshot  Json?
+  vehicleSnapshot Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  driver          Driver?        @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  passengers      RidePassenger[]
+  kashafDocuments KashafDocument[]
+}
+
+model RidePassenger {
+  id                String    @id @default(cuid())
+  rideId            String
+  passengerId       String
+  sortOrder         Int       @default(0)
+  passengerSnapshot Json?
+  ride              Ride      @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  passenger         Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+
+  @@unique([rideId, passengerId])
+  @@index([rideId, sortOrder])
+}
+
+model KashafTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  filePath    String
+  version     Int      @default(1)
+  pageCount   Int      @default(1)
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  fieldConfig Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  documents   KashafDocument[]
+}
+
+model KashafDocument {
+  id             String               @id @default(cuid())
+  documentNumber String               @unique
+  rideId         String
+  templateId     String
+  filePath       String?
+  status         KashafDocumentStatus @default(GENERATED)
+  snapshot       Json
+  passengerCount Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  ride           Ride                 @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  template       KashafTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  @@index([rideId])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  id              String   @id @default(cuid())
+  defaultTemplateId String?
+  defaultFont     String   @default("Helvetica")
+  arabicFont      String   @default("NotoSansArabic")
+  pdfSettings     Json?
+  updatedAt       DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

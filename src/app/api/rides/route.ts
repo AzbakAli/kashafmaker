@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth, hasPermission } from "@/lib/auth";
+import { prisma } from "@/lib/db/prisma";
+import { createRide } from "@/services/rides";
+import { rideSchema } from "@/lib/validation/schemas";
+
+export async function GET(request: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(request.url);
+  const query = searchParams.get("q") || "";
+  const status = searchParams.get("status") || "";
+  const driverId = searchParams.get("driverId") || "";
+
+  const rides = await prisma.ride.findMany({
+    where: {
+      ...(status ? { status: status as "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" } : {}),
+      ...(driverId ? { driverId } : {}),
+      ...(query
+        ? {
+            OR: [
+              { rideNumber: { contains: query } },
+              { pickup: { contains: query } },
+              { destination: { contains: query } },
+              { driver: { name: { contains: query } } },
+              { vehicle: { plateNumber: { contains: query } } },
+            ],
+          }
+        : {}),
+    },
+    include: {
+      driver: true,
+      vehicle: true,
+      passengers: { include: { passenger: true } },
+      kashafDocuments: { take: 1, orderBy: { createdAt: "desc" } },
+    },
+    orderBy: { date: "desc" },
+  });
+
+  return NextResponse.json(rides);
+}
+
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session || !hasPermission(session.user.role, "operate")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const data = rideSchema.parse(body);
+    const ride = await createRide(data);
+    return NextResponse.json(ride, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create ride";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
