@@ -3,6 +3,8 @@ import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 export const StoragePaths = {
   templates: "templates",
@@ -40,12 +42,31 @@ export async function saveFile(
 
 export async function readFile(relativePath: string): Promise<Buffer> {
   const safe = relativePath.replace(/\\/g, "/");
+
+  // If it's a Supabase Storage URL, fetch it
+  if (safe.startsWith("http://") || safe.startsWith("https://")) {
+    const response = await fetch(safe);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file from ${safe}`);
+    }
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  // Otherwise, read from local filesystem
   const filePath = path.join(UPLOAD_DIR, safe);
   return fs.readFile(filePath);
 }
 
 export async function deleteFile(relativePath: string): Promise<void> {
   try {
+    const safe = relativePath.replace(/\\/g, "/");
+
+    // If it's a Supabase Storage URL, we'd need to delete from Supabase
+    // For now, skip Supabase deletion to avoid complexity
+    if (safe.startsWith("http://") || safe.startsWith("https://")) {
+      return;
+    }
+
     const filePath = path.join(UPLOAD_DIR, relativePath);
     await fs.unlink(filePath);
   } catch {
@@ -55,7 +76,15 @@ export async function deleteFile(relativePath: string): Promise<void> {
 
 export async function fileExists(relativePath: string): Promise<boolean> {
   try {
-    const filePath = path.join(UPLOAD_DIR, relativePath);
+    const safe = relativePath.replace(/\\/g, "/");
+
+    // If it's a Supabase Storage URL, try to fetch it
+    if (safe.startsWith("http://") || safe.startsWith("https://")) {
+      const response = await fetch(safe, { method: "HEAD" });
+      return response.ok;
+    }
+
+    const filePath = path.join(UPLOAD_DIR, safe);
     await fs.access(filePath);
     return true;
   } catch {
