@@ -4,7 +4,7 @@ import path from "path";
 async function extract(pdfPath: string) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const data = new Uint8Array(fs.readFileSync(pdfPath));
-  const doc = await pdfjs.getDocument({ data, ignoreErrors: true }).promise;
+  const doc = await pdfjs.getDocument({ data }).promise;
   console.log("\n===", path.basename(pdfPath), "pages", doc.numPages, "===");
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);

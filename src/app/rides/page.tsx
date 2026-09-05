@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { Plus, Search, MapPin, Calendar, Users, Car, ArrowRight, FileText, Trash2, Edit } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -42,6 +43,7 @@ const statusIcon = (status: string) => {
 };
 
 export default function RidesPage() {
+  const { toast } = useToast();
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

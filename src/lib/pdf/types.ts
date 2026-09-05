@@ -67,6 +67,7 @@ export interface PdfCoverRect {
 }
 
 export interface TemplateFieldConfig {
+  [key: string]: unknown;
   fields: TemplateField[];
   passengerTable?: PassengerTableConfig;
   /** Clip these areas and redraw the letterhead so guide boxes / unused rows disappear without white patches. */
