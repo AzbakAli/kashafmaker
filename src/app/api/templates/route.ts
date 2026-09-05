@@ -5,6 +5,7 @@ import { saveFile, validatePdfFile } from "@/lib/storage";
 import { getNbisKashafFieldConfig, isNbisStyleTemplate } from "@/lib/pdf";
 import { templateSchema } from "@/lib/validation/schemas";
 import { PDFDocument } from "pdf-lib";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
         pageCount,
         isActive: data.isActive,
         isDefault: data.isDefault,
-        fieldConfig,
+        fieldConfig: fieldConfig as unknown as Prisma.InputJsonValue,
       },
     });
 
