@@ -8,11 +8,10 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const isLoginPage = req.nextUrl.pathname === "/login";
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
-  const isApiDebug = req.nextUrl.pathname.startsWith("/api/debug");
   const pathname = req.nextUrl.pathname;
   const role = req.auth?.user?.role;
 
-  if (isApiAuth || isApiDebug) return NextResponse.next();
+  if (isApiAuth) return NextResponse.next();
 
   if (!isLoggedIn && !isLoginPage) {
     if (pathname.startsWith("/api/")) {
