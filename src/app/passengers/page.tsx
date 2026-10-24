@@ -7,7 +7,7 @@ import { PageHeader, Card, CardContent, EmptyState, LoadingSpinner, Modal } from
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { Plus, Search, User, Phone, IdCard, Globe, UserCircle, CheckCircle, XCircle, Trash2, ArrowRight, FileText, Upload } from "lucide-react";
+import { Plus, Search, User, Phone, IdCard, Globe, UserCircle, CheckCircle, XCircle, Trash2, ArrowRight } from "lucide-react";
 
 interface Passenger {
   id: string;
@@ -19,29 +19,12 @@ interface Passenger {
   phone: string | null;
 }
 
-interface VisaExtractedData {
-  fullName: string;
-  passportNumber: string;
-  nationality: string;
-  visaType: string;
-  confidence: {
-    fullName: 'high' | 'medium' | 'low';
-    passportNumber: 'high' | 'medium' | 'low';
-    nationality: 'high' | 'medium' | 'low';
-    visaType: 'high' | 'medium' | 'low';
-  };
-}
-
 export default function PassengersPage() {
   const { toast } = useToast();
   const [passengers, setPassengers] = useState<Passenger[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
-  const [visaModalOpen, setVisaModalOpen] = useState(false);
-  const [visaFile, setVisaFile] = useState<File | null>(null);
-  const [extracting, setExtracting] = useState(false);
-  const [extractedData, setExtractedData] = useState<VisaExtractedData | null>(null);
   const [form, setForm] = useState({
     fullName: "",
     passportNumber: "",
@@ -106,58 +89,6 @@ export default function PassengersPage() {
     }
   };
 
-  const handleVisaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      toast("Please upload a PDF file", "error");
-      return;
-    }
-
-    setVisaFile(file);
-    setExtracting(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch('/api/extract-visa', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to extract visa information');
-      }
-
-      const data = await res.json();
-      setExtractedData(data);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : 'Failed to extract visa information', 'error');
-    } finally {
-      setExtracting(false);
-    }
-  };
-
-  const confirmAndFill = () => {
-    if (!extractedData) return;
-
-    setForm({
-      ...form,
-      fullName: extractedData.fullName,
-      passportNumber: extractedData.passportNumber,
-      nationality: extractedData.nationality,
-      visaType: extractedData.visaType,
-    });
-
-    setVisaModalOpen(false);
-    setModalOpen(true);
-    setExtractedData(null);
-    setVisaFile(null);
-  };
-
   const getGenderIcon = (gender: string | null) => {
     switch (gender) {
       case "MALE": return "♂";
@@ -172,14 +103,9 @@ export default function PassengersPage() {
         title="Passengers"
         description="Manage passenger and customer records"
         action={
-          <div className="flex gap-2">
-            <Button onClick={() => setVisaModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-              <FileText className="h-4 w-4 mr-2" /> Import from Visa PDF
-            </Button>
-            <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="h-4 w-4 mr-2" /> Add Passenger
-            </Button>
-          </div>
+          <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+            <Plus className="h-4 w-4 mr-2" /> Add Passenger
+          </Button>
         }
       />
 
@@ -367,112 +293,6 @@ export default function PassengersPage() {
             </Button>
           </div>
         </form>
-      </Modal>
-
-      <Modal open={visaModalOpen} onClose={() => setVisaModalOpen(false)} title="Import Passenger from Visa PDF">
-        <div className="space-y-4">
-          <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center">
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleVisaUpload}
-              className="hidden"
-              id="visa-upload"
-            />
-            <label
-              htmlFor="visa-upload"
-              className="cursor-pointer flex flex-col items-center"
-            >
-              <Upload className="h-12 w-12 text-slate-400 mb-2" />
-              <p className="text-sm text-slate-600">
-                {visaFile ? visaFile.name : "Click to upload visa PDF"}
-              </p>
-              <p className="text-xs text-slate-400 mt-1">Supports text-based and scanned PDFs</p>
-            </label>
-          </div>
-
-          {extracting && (
-            <div className="flex items-center justify-center py-4">
-              <LoadingSpinner />
-              <span className="ml-2 text-sm text-slate-600">Extracting information...</span>
-            </div>
-          )}
-
-          {extractedData && (
-            <div className="space-y-4 p-4 bg-slate-50 rounded-lg">
-              <h3 className="font-semibold text-slate-900 mb-3">Extracted Information</h3>
-              
-              <div>
-                <label className="text-xs text-slate-500 uppercase tracking-wide mb-1">Full Name</label>
-                <Input
-                  value={extractedData.fullName}
-                  onChange={(e) => setExtractedData({ ...extractedData, fullName: e.target.value })}
-                  className={extractedData.confidence.fullName === 'low' ? 'border-amber-500' : ''}
-                />
-                {extractedData.confidence.fullName === 'low' && (
-                  <p className="text-xs text-amber-600 mt-1">⚠️ Low confidence - please verify</p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500 uppercase tracking-wide mb-1">Passport Number</label>
-                <Input
-                  value={extractedData.passportNumber}
-                  onChange={(e) => setExtractedData({ ...extractedData, passportNumber: e.target.value })}
-                  className={extractedData.confidence.passportNumber === 'low' ? 'border-amber-500' : ''}
-                />
-                {extractedData.confidence.passportNumber === 'low' && (
-                  <p className="text-xs text-amber-600 mt-1">⚠️ Low confidence - please verify</p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500 uppercase tracking-wide mb-1">Nationality</label>
-                <Input
-                  value={extractedData.nationality}
-                  onChange={(e) => setExtractedData({ ...extractedData, nationality: e.target.value })}
-                  className={extractedData.confidence.nationality === 'low' ? 'border-amber-500' : ''}
-                />
-                {extractedData.confidence.nationality === 'low' && (
-                  <p className="text-xs text-amber-600 mt-1">⚠️ Low confidence - please verify</p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500 uppercase tracking-wide mb-1">Visa Type</label>
-                <Input
-                  value={extractedData.visaType}
-                  onChange={(e) => setExtractedData({ ...extractedData, visaType: e.target.value })}
-                  className={extractedData.confidence.visaType === 'low' ? 'border-amber-500' : ''}
-                />
-                {extractedData.confidence.visaType === 'low' && (
-                  <p className="text-xs text-amber-600 mt-1">⚠️ Low confidence - please verify</p>
-                )}
-              </div>
-
-              <div className="flex gap-3 pt-4 border-t border-slate-200">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setVisaModalOpen(false);
-                    setExtractedData(null);
-                    setVisaFile(null);
-                  }}
-                  className="border-slate-300 hover:bg-slate-50"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={confirmAndFill}
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                >
-                  Confirm and Fill Form
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
       </Modal>
     </AppLayout>
   );
