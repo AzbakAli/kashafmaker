@@ -173,7 +173,7 @@ export default function PassengersPage() {
         description="Manage passenger and customer records"
         action={
           <div className="flex gap-2">
-            <Button onClick={() => setVisaModalOpen(true)} variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50">
+            <Button onClick={() => setVisaModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
               <FileText className="h-4 w-4 mr-2" /> Import from Visa PDF
             </Button>
             <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
