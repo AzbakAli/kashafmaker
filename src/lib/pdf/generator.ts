@@ -21,7 +21,7 @@ import {
   PassengerTableConfig,
   resolveFieldValue,
 } from "./types";
-import { readFile } from "../storage";
+import { readFile, UPLOAD_DIR } from "../storage";
 
 function containsArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);

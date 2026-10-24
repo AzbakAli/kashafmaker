@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
+export const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
