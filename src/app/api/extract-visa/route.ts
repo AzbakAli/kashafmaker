@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as pdfjs from "pdfjs-dist";
 
+// Polyfill for Promise.withResolvers (Node.js < 22)
+if (typeof Promise.withResolvers === 'undefined') {
+  (Promise as any).withResolvers = function <T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: any) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
@@ -50,29 +63,34 @@ export async function POST(request: NextRequest) {
 function extractVisaInfo(text: string) {
   const cleanText = text.replace(/\s+/g, " ").trim();
 
-  // Saudi visa document patterns based on the sample
-  // Name patterns - look for "Name:" field
+  // Saudi visa document patterns - more accurate based on sample
+  // Name patterns - look for "Name:" field in Saudi visas
   const namePatterns = [
-    /(?:Name[:\s]*)([A-Z][a-zA-Z\s]+)/i,
-    /(?:اسم[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+    /(?:Name[:\s]+)([A-Z][a-zA-Z\s]+)(?:\s*(?:Passport|Birth|Gender))/i,
+    /(?:اسم[:\s]+)([A-Z][a-zA-Z\s]+)/i,
+    /(?:Holder Name[:\s]+)([A-Z][a-zA-Z\s]+)/i,
   ];
 
-  // Passport number patterns - look for "Passport No:" field
+  // Passport number patterns - more specific for Saudi visas
   const passportPatterns = [
-    /(?:Passport No\.?|Passport No)[:\s]*([A-Z0-9]{6,9})/i,
-    /(?:P\.No\.?|P\/No\.?|رقم جواز)[:\s]*([A-Z0-9]{6,9})/i,
+    /(?:Passport No\.?[:\s]+)([A-Z0-9]{6,9})(?:\s*(?:Place|Date))/i,
+    /(?:Passport Number[:\s]+)([A-Z0-9]{6,9})/i,
+    /(?:P\.No\.?[:\s]+)([A-Z0-9]{6,9})/i,
+    /(?:رقم جواز[:\s]+)([A-Z0-9]{6,9})/i,
   ];
 
-  // Nationality patterns - look for "Nationality:" field
+  // Nationality patterns
   const nationalityPatterns = [
-    /(?:Nationality[:\s]*)([A-Z][a-zA-Z\s]+)/i,
-    /(?:الجنسية[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+    /(?:Nationality[:\s]+)([A-Z][a-zA-Z\s]+)(?:\s*(?:Birth|Type))/i,
+    /(?:الجنسية[:\s]+)([A-Z][a-zA-Z\s]+)/i,
+    /(?:Country of Birth[:\s]+)([A-Z][a-zA-Z\s]+)/i,
   ];
 
-  // Visa type patterns - look for "Type Of Visa:" field
+  // Visa type patterns - more specific
   const visaTypePatterns = [
-    /(?:Type Of Visa[:\s]*)([A-Z][a-zA-Z\s]+)/i,
-    /(?:نوع التأشيرة[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+    /(?:Type Of Visa[:\s]+)([A-Z][a-zA-Z\s]+)(?:\s*(?:Entry|Duration))/i,
+    /(?:نوع التأشيرة[:\s]+)([A-Z][a-zA-Z\s]+)/i,
+    /(?:Visa Type[:\s]+)([A-Z][a-zA-Z\s]+)/i,
   ];
 
   let fullName = "";
@@ -85,6 +103,8 @@ function extractVisaInfo(text: string) {
     const match = cleanText.match(pattern);
     if (match && match[1]) {
       fullName = match[1].trim();
+      // Clean up any trailing words that aren't part of the name
+      fullName = fullName.replace(/\s+(?:Passport|Birth|Gender|Date|Place)/i, '').trim();
       break;
     }
   }
@@ -103,6 +123,7 @@ function extractVisaInfo(text: string) {
     const match = cleanText.match(pattern);
     if (match && match[1]) {
       nationality = match[1].trim();
+      nationality = nationality.replace(/\s+(?:Birth|Type|Date)/i, '').trim();
       break;
     }
   }
@@ -112,6 +133,7 @@ function extractVisaInfo(text: string) {
     const match = cleanText.match(pattern);
     if (match && match[1]) {
       visaType = match[1].trim();
+      visaType = visaType.replace(/\s+(?:Entry|Duration|Type)/i, '').trim();
       break;
     }
   }
@@ -129,6 +151,7 @@ function extractVisaInfo(text: string) {
     fullName: fullName ? 'high' as const : 'low' as const,
     passportNumber: passportNumber ? 'high' as const : 'low' as const,
     nationality: nationality ? 'high' as const : 'low' as const,
+    visaType: visaType ? 'high' as const : 'low' as const,
   };
 
   return {
