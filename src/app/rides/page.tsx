@@ -9,6 +9,7 @@ import { Input, Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { Plus, Search, MapPin, Calendar, Users, Car, ArrowRight, FileText, Trash2, Edit } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 interface Ride {
   id: string;
@@ -20,8 +21,8 @@ interface Ride {
   status: string;
   driver: { name: string } | null;
   vehicle: { make: string; model: string; plateNumber: string } | null;
-  passengers: Array<unknown>;
   kashafDocuments: Array<{ id: string }>;
+  _count: { passengers: number };
 }
 
 const statusVariant = (status: string) => {
@@ -48,10 +49,11 @@ export default function RidesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const fetchRides = () => {
     const params = new URLSearchParams();
-    if (search) params.set("q", search);
+    if (debouncedSearch) params.set("q", debouncedSearch);
     if (statusFilter) params.set("status", statusFilter);
     fetch(`/api/rides?${params}`)
       .then((r) => r.json())
@@ -59,7 +61,7 @@ export default function RidesPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchRides(); }, [search, statusFilter]);
+  useEffect(() => { fetchRides(); }, [debouncedSearch, statusFilter]);
 
   const deleteKashaf = async (documentId: string) => {
     if (!window.confirm("Delete this Kashaf PDF? This cannot be undone.")) return;
@@ -200,7 +202,7 @@ export default function RidesPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <Users className="h-3 w-3 text-slate-400" />
-                          <span className="font-medium text-slate-900">{ride.passengers.length}</span>
+                          <span className="font-medium text-slate-900">{ride._count?.passengers ?? 0}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3">

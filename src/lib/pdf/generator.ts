@@ -23,7 +23,7 @@ import {
 } from "./types";
 import { readFile } from "../storage";
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? '/tmp/uploads';
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
 
 function containsArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { Plus, Search, Car, User, CheckCircle, XCircle, Calendar, Trash2, ArrowRight } from "lucide-react";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 export default function VehiclesPage() {
   const { toast } = useToast();
@@ -15,6 +16,7 @@ export default function VehiclesPage() {
   const [drivers, setDrivers] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     vehicleType: "Van", make: "", model: "", plateNumber: "", registrationNumber: "",
@@ -23,7 +25,7 @@ export default function VehiclesPage() {
 
   const fetchData = () => {
     Promise.all([
-      fetch(`/api/vehicles?q=${search}`).then((r) => r.json()),
+      fetch(`/api/vehicles?q=${debouncedSearch}`).then((r) => r.json()),
       fetch("/api/drivers?status=ACTIVE").then((r) => r.json()),
     ]).then(([v, d]) => {
       setVehicles(Array.isArray(v) ? v : []);
@@ -31,7 +33,7 @@ export default function VehiclesPage() {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchData(); }, [search]);
+  useEffect(() => { fetchData(); }, [debouncedSearch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

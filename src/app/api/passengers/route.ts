@@ -14,13 +14,14 @@ export async function GET(request: NextRequest) {
     where: query
       ? {
           OR: [
-            { fullName: { contains: query } },
-            { passportNumber: { contains: query } },
-            { nationality: { contains: query } },
+            { fullName: { contains: query, mode: "insensitive" } },
+            { passportNumber: { contains: query, mode: "insensitive" } },
+            { nationality: { contains: query, mode: "insensitive" } },
           ],
         }
       : {},
     orderBy: { fullName: "asc" },
+    take: 300,
   });
 
   return NextResponse.json(passengers);

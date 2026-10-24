@@ -14,7 +14,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   const session = await auth();
-  if (!session || !hasPermission(session.user.role, "settings")) {
+  if (!session || !hasPermission(session.user.role, "manage")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

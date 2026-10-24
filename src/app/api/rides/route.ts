@@ -20,22 +20,30 @@ export async function GET(request: NextRequest) {
       ...(query
         ? {
             OR: [
-              { rideNumber: { contains: query } },
-              { pickup: { contains: query } },
-              { destination: { contains: query } },
-              { driver: { name: { contains: query } } },
-              { vehicle: { plateNumber: { contains: query } } },
+              { rideNumber: { contains: query, mode: "insensitive" } },
+              { pickup: { contains: query, mode: "insensitive" } },
+              { destination: { contains: query, mode: "insensitive" } },
+              { driver: { name: { contains: query, mode: "insensitive" } } },
+              { vehicle: { plateNumber: { contains: query, mode: "insensitive" } } },
             ],
           }
         : {}),
     },
-    include: {
-      driver: true,
-      vehicle: true,
-      passengers: { include: { passenger: true } },
-      kashafDocuments: { take: 1, orderBy: { createdAt: "desc" } },
+    select: {
+      id: true,
+      rideNumber: true,
+      date: true,
+      time: true,
+      pickup: true,
+      destination: true,
+      status: true,
+      driver: { select: { name: true } },
+      vehicle: { select: { make: true, model: true, plateNumber: true } },
+      kashafDocuments: { take: 1, orderBy: { createdAt: "desc" }, select: { id: true } },
+      _count: { select: { passengers: true } },
     },
     orderBy: { date: "desc" },
+    take: 200,
   });
 
   return NextResponse.json(rides);

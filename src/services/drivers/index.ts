@@ -81,9 +81,9 @@ export async function searchDrivers(query?: string, status?: string) {
       ...(query
         ? {
             OR: [
-              { name: { contains: query } },
-              { iqamaNumber: { contains: query } },
-              { phone: { contains: query } },
+              { name: { contains: query, mode: "insensitive" } },
+              { iqamaNumber: { contains: query, mode: "insensitive" } },
+              { phone: { contains: query, mode: "insensitive" } },
             ],
           }
         : {}),

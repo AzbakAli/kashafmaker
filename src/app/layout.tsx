@@ -6,6 +6,7 @@ import { AuthSessionProvider } from "@/components/layout/session-provider";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-geist-sans",
+  display: "swap",
 });
 
 export const metadata: Metadata = {

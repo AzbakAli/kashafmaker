@@ -296,13 +296,19 @@ export async function getDashboardStats() {
     prisma.kashafDocument.count(),
     prisma.ride.findMany({
       where: { date: { gte: today, lt: tomorrow } },
-      include: {
-        driver: true,
-        vehicle: true,
-        passengers: true,
-        kashafDocuments: { take: 1, orderBy: { createdAt: "desc" } },
+      select: {
+        id: true,
+        rideNumber: true,
+        time: true,
+        pickup: true,
+        destination: true,
+        status: true,
+        driver: { select: { name: true } },
+        vehicle: { select: { make: true, model: true, plateNumber: true } },
+        kashafDocuments: { take: 1, orderBy: { createdAt: "desc" }, select: { id: true } },
+        _count: { select: { passengers: true } },
       },
-      orderBy: { time: "asc" },
+      orderBy: { date: "asc" },
     }),
   ]);
 

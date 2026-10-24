@@ -50,10 +50,10 @@ export async function searchVehicles(query?: string, status?: string) {
       ...(query
         ? {
             OR: [
-              { plateNumber: { contains: query } },
-              { make: { contains: query } },
-              { model: { contains: query } },
-              { vehicleType: { contains: query } },
+              { plateNumber: { contains: query, mode: "insensitive" } },
+              { make: { contains: query, mode: "insensitive" } },
+              { model: { contains: query, mode: "insensitive" } },
+              { vehicleType: { contains: query, mode: "insensitive" } },
             ],
           }
         : {}),

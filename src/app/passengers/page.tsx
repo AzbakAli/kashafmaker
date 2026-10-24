@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { Plus, Search, User, Phone, IdCard, Globe, UserCircle, CheckCircle, XCircle, Trash2, ArrowRight } from "lucide-react";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 interface Passenger {
   id: string;
@@ -24,6 +25,7 @@ export default function PassengersPage() {
   const [passengers, setPassengers] = useState<Passenger[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     fullName: "",
@@ -37,7 +39,7 @@ export default function PassengersPage() {
   });
 
   const fetchData = () => {
-    fetch(`/api/passengers?q=${search}`)
+    fetch(`/api/passengers?q=${debouncedSearch}`)
       .then((r) => r.json())
       .then((data) => setPassengers(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
@@ -45,7 +47,7 @@ export default function PassengersPage() {
 
   useEffect(() => {
     fetchData();
-  }, [search]);
+  }, [debouncedSearch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

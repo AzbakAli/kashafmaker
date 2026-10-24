@@ -23,14 +23,17 @@ export default function LoginPage() {
       email,
       password,
       redirect: false,
+      callbackUrl: "/dashboard",
     });
 
     if (result?.error) {
       setError("Invalid email or password");
       setLoading(false);
-    } else {
-      router.push("/dashboard");
+      return;
     }
+
+    router.replace("/dashboard");
+    router.refresh();
   };
 
   return (

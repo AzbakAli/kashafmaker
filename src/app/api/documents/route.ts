@@ -14,17 +14,30 @@ export async function GET(request: NextRequest) {
     where: query
       ? {
           OR: [
-            { documentNumber: { contains: query } },
-            { ride: { rideNumber: { contains: query } } },
-            { ride: { driver: { name: { contains: query } } } },
+            { documentNumber: { contains: query, mode: "insensitive" } },
+            { ride: { rideNumber: { contains: query, mode: "insensitive" } } },
+            { ride: { driver: { name: { contains: query, mode: "insensitive" } } } },
           ],
         }
       : {},
-    include: {
-      ride: { include: { driver: true, vehicle: true } },
-      template: true,
+    select: {
+      id: true,
+      documentNumber: true,
+      createdAt: true,
+      status: true,
+      passengerCount: true,
+      ride: {
+        select: {
+          rideNumber: true,
+          date: true,
+          driver: { select: { name: true } },
+          vehicle: { select: { plateNumber: true } },
+        },
+      },
+      template: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: 200,
   });
 
   return NextResponse.json(documents);

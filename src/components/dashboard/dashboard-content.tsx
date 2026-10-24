@@ -35,8 +35,8 @@ interface DashboardData {
     status: string;
     driver: { name: string } | null;
     vehicle: { make: string; model: string; plateNumber: string } | null;
-    passengers: Array<unknown>;
     kashafDocuments: Array<{ id: string }>;
+    _count: { passengers: number };
   }>;
 }
 
@@ -58,18 +58,19 @@ const statusIcon = (status: string) => {
   }
 };
 
-export function DashboardContent() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+export function DashboardContent({ initialData }: { initialData?: DashboardData }) {
+  const [data, setData] = useState<DashboardData | null>(initialData ?? null);
+  const [loading, setLoading] = useState(!initialData);
 
   useEffect(() => {
+    if (initialData) return;
     fetch("/api/dashboard")
       .then((r) => r.json())
       .then((payload) => {
         if (payload && typeof payload.totalRides === "number") setData(payload);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [initialData]);
 
   if (loading) {
     return (
@@ -245,7 +246,7 @@ export function DashboardContent() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <Users className="h-3 w-3 text-slate-400" />
-                          <span className="font-medium text-slate-900">{ride.passengers.length}</span>
+                          <span className="font-medium text-slate-900">{ride._count.passengers}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3">

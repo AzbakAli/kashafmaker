@@ -6,6 +6,7 @@ import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner } from
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { Download, Printer, Trash2 } from "lucide-react";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 interface DocumentRow {
   id: string;
@@ -26,13 +27,14 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   useEffect(() => {
-    fetch(`/api/documents?q=${search}`)
+    fetch(`/api/documents?q=${debouncedSearch}`)
       .then((r) => r.json())
       .then((data) => setDocuments(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  }, [search]);
+  }, [debouncedSearch]);
 
   return (
     <AppLayout>

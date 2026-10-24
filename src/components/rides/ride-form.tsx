@@ -174,27 +174,45 @@ export function RideForm({ rideId, initial }: RideFormProps) {
     setVisaFiles(pdfFiles);
     setExtractingVisas(true);
     setExtractedPassengers([]);
+    e.target.value = "";
 
     try {
-      const promises = pdfFiles.map(async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await fetch('/api/extract-visa', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || `Failed to extract from ${file.name}`);
-        }
-        return res.json();
-      });
+      const settled = await Promise.allSettled(
+        pdfFiles.map(async (file) => {
+          const formData = new FormData();
+          formData.append("file", file);
+          const res = await fetch("/api/extract-visa", {
+            method: "POST",
+            body: formData,
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(payload.error || `Failed to extract from ${file.name}`);
+          }
+          return payload as VisaExtractedData;
+        })
+      );
 
-      const results = await Promise.all(promises);
+      const results = settled
+        .filter((item): item is PromiseFulfilledResult<VisaExtractedData> => item.status === "fulfilled")
+        .map((item) => item.value);
+      const failures = settled.filter((item) => item.status === "rejected");
+
       setExtractedPassengers(results);
-      toast(`Successfully extracted data from ${results.length} visa PDF(s)`, "success");
+
+      if (results.length > 0 && failures.length === 0) {
+        toast(`Successfully extracted data from ${results.length} visa PDF(s)`, "success");
+      } else if (results.length > 0) {
+        toast(`Extracted ${results.length} visa(s); ${failures.length} failed`, "error");
+      } else {
+        const firstError = failures[0] && failures[0].status === "rejected" ? failures[0].reason : null;
+        toast(
+          firstError instanceof Error ? firstError.message : "Failed to extract visa information",
+          "error"
+        );
+      }
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Failed to extract visa information', 'error');
+      toast(error instanceof Error ? error.message : "Failed to extract visa information", "error");
     } finally {
       setExtractingVisas(false);
     }
