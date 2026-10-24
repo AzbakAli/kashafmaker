@@ -213,10 +213,12 @@ export function RideForm({ rideId, initial }: RideFormProps) {
             passportNumber: data.passportNumber,
             nationality: data.nationality,
             visaType: data.visaType,
+            gender: undefined,
           }),
         });
         if (!res.ok) {
-          throw new Error(`Failed to create passenger: ${data.fullName}`);
+          const err = await res.json();
+          throw new Error(`Failed to create passenger: ${data.fullName} - ${err.error}`);
         }
         return res.json();
       });
