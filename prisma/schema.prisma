@@ -160,6 +160,11 @@ model Ride {
   vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   passengers      RidePassenger[]
   kashafDocuments KashafDocument[]
+
+  @@index([date])
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
 }
 
 model RidePassenger {

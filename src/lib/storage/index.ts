@@ -52,6 +52,11 @@ export async function readFile(relativePath: string): Promise<Buffer> {
     return Buffer.from(await response.arrayBuffer());
   }
 
+  // If it's already an absolute path (for testing), try to read it directly
+  if (path.isAbsolute(safe)) {
+    return fs.readFile(safe);
+  }
+
   // Otherwise, read from local filesystem
   const filePath = path.join(UPLOAD_DIR, safe);
   return fs.readFile(filePath);

@@ -21,8 +21,7 @@ import {
   PassengerTableConfig,
   resolveFieldValue,
 } from "./types";
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
+import { readFile } from "../storage";
 
 function containsArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);
@@ -331,8 +330,7 @@ export async function generateKashafPdf(
   fieldConfig: TemplateFieldConfig,
   context: KashafDataContext
 ): Promise<Uint8Array> {
-  const fullPath = path.join(UPLOAD_DIR, templatePath.replace(/\\/g, "/"));
-  const templateBytes = await fs.readFile(fullPath);
+  const templateBytes = await readFile(templatePath);
 
   const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
   pdfDoc.registerFontkit(fontkit);
@@ -383,8 +381,7 @@ export async function generateKashafPdf(
 }
 
 export async function getPdfPageCount(templatePath: string): Promise<number> {
-  const fullPath = path.join(UPLOAD_DIR, templatePath.replace(/\\/g, "/"));
-  const templateBytes = await fs.readFile(fullPath);
+  const templateBytes = await readFile(templatePath);
   const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
   return pdfDoc.getPageCount();
 }

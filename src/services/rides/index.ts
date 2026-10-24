@@ -48,6 +48,11 @@ export async function createRide(data: RideInput) {
     }
   }
 
+  // Fetch all passengers in one query instead of N+1
+  const passengers = await prisma.passenger.findMany({
+    where: { id: { in: data.passengerIds } },
+  });
+
   const ride = await prisma.ride.create({
     data: {
       rideNumber,
@@ -64,18 +69,16 @@ export async function createRide(data: RideInput) {
       driverSnapshot: driverSnapshot as Prisma.InputJsonValue,
       vehicleSnapshot: vehicleSnapshot as Prisma.InputJsonValue,
       passengers: {
-        create: await Promise.all(
-          data.passengerIds.map(async (passengerId, index) => {
-            const passenger = await prisma.passenger.findUnique({ where: { id: passengerId } });
-            return {
-              passengerId,
-              sortOrder: index,
-              passengerSnapshot: passenger
-                ? (createPassengerSnapshot(passenger) as Prisma.InputJsonValue)
-                : undefined,
-            };
-          })
-        ),
+        create: data.passengerIds.map((passengerId, index) => {
+          const passenger = passengers.find(p => p.id === passengerId);
+          return {
+            passengerId,
+            sortOrder: index,
+            passengerSnapshot: passenger
+              ? (createPassengerSnapshot(passenger) as Prisma.InputJsonValue)
+              : undefined,
+          };
+        }),
       },
     },
     include: {
@@ -104,6 +107,11 @@ export async function updateRide(id: string, data: RideInput) {
 
   await prisma.ridePassenger.deleteMany({ where: { rideId: id } });
 
+  // Fetch all passengers in one query instead of N+1
+  const passengers = await prisma.passenger.findMany({
+    where: { id: { in: data.passengerIds } },
+  });
+
   const ride = await prisma.ride.update({
     where: { id },
     data: {
@@ -120,18 +128,16 @@ export async function updateRide(id: string, data: RideInput) {
       driverSnapshot: driverSnapshot as Prisma.InputJsonValue,
       vehicleSnapshot: vehicleSnapshot as Prisma.InputJsonValue,
       passengers: {
-        create: await Promise.all(
-          data.passengerIds.map(async (passengerId, index) => {
-            const passenger = await prisma.passenger.findUnique({ where: { id: passengerId } });
-            return {
-              passengerId,
-              sortOrder: index,
-              passengerSnapshot: passenger
-                ? (createPassengerSnapshot(passenger) as Prisma.InputJsonValue)
-                : undefined,
-            };
-          })
-        ),
+        create: data.passengerIds.map((passengerId, index) => {
+          const passenger = passengers.find(p => p.id === passengerId);
+          return {
+            passengerId,
+            sortOrder: index,
+            passengerSnapshot: passenger
+              ? (createPassengerSnapshot(passenger) as Prisma.InputJsonValue)
+              : undefined,
+          };
+        }),
       },
     },
     include: {

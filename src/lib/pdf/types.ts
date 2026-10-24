@@ -122,6 +122,7 @@ export interface KashafDataContext {
     gender?: string;
     visa_type?: string;
   }>;
+  third_party?: string;
 }
 
 export const DYNAMIC_FIELDS = {
