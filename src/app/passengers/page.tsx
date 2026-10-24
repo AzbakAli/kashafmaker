@@ -23,10 +23,12 @@ interface VisaExtractedData {
   fullName: string;
   passportNumber: string;
   nationality: string;
+  visaType: string;
   confidence: {
     fullName: 'high' | 'medium' | 'low';
     passportNumber: 'high' | 'medium' | 'low';
     nationality: 'high' | 'medium' | 'low';
+    visaType: 'high' | 'medium' | 'low';
   };
 }
 
@@ -147,6 +149,7 @@ export default function PassengersPage() {
       fullName: extractedData.fullName,
       passportNumber: extractedData.passportNumber,
       nationality: extractedData.nationality,
+      visaType: extractedData.visaType,
     });
 
     setVisaModalOpen(false);
@@ -431,6 +434,18 @@ export default function PassengersPage() {
                   className={extractedData.confidence.nationality === 'low' ? 'border-amber-500' : ''}
                 />
                 {extractedData.confidence.nationality === 'low' && (
+                  <p className="text-xs text-amber-600 mt-1">⚠️ Low confidence - please verify</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-500 uppercase tracking-wide mb-1">Visa Type</label>
+                <Input
+                  value={extractedData.visaType}
+                  onChange={(e) => setExtractedData({ ...extractedData, visaType: e.target.value })}
+                  className={extractedData.confidence.visaType === 'low' ? 'border-amber-500' : ''}
+                />
+                {extractedData.confidence.visaType === 'low' && (
                   <p className="text-xs text-amber-600 mt-1">⚠️ Low confidence - please verify</p>
                 )}
               </div>

@@ -50,28 +50,35 @@ export async function POST(request: NextRequest) {
 function extractVisaInfo(text: string) {
   const cleanText = text.replace(/\s+/g, " ").trim();
 
-  // Common patterns for visa documents
-  // Full Name patterns
+  // Saudi visa document patterns based on the sample
+  // Name patterns - look for "Name:" field
   const namePatterns = [
-    /(?:Name|Full Name|Holder Name|Given Names?)[:\s]*([A-Z][a-zA-Z\s]+)/i,
-    /(?:Surn?ame)[:\s]*([A-Z][a-zA-Z]+)/i,
+    /(?:Name[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+    /(?:اسم[:\s]*)([A-Z][a-zA-Z\s]+)/i,
   ];
 
-  // Passport number patterns (typically 6-9 alphanumeric characters)
+  // Passport number patterns - look for "Passport No:" field
   const passportPatterns = [
-    /(?:Passport No|Passport Number|Passport #|Document No)[:\s]*([A-Z0-9]{6,9})/i,
-    /(?:P\.No|P\/No)[:\s]*([A-Z0-9]{6,9})/i,
-    /(?:No\.|No)[:\s]*([A-Z0-9]{6,9})/i,
+    /(?:Passport No\.?|Passport No)[:\s]*([A-Z0-9]{6,9})/i,
+    /(?:P\.No\.?|P\/No\.?|رقم جواز)[:\s]*([A-Z0-9]{6,9})/i,
   ];
 
-  // Nationality patterns
+  // Nationality patterns - look for "Nationality:" field
   const nationalityPatterns = [
-    /(?:Nationality|Country of Birth|Citizenship)[:\s]*([A-Z][a-zA-Z\s]+)/i,
+    /(?:Nationality[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+    /(?:الجنسية[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+  ];
+
+  // Visa type patterns - look for "Type Of Visa:" field
+  const visaTypePatterns = [
+    /(?:Type Of Visa[:\s]*)([A-Z][a-zA-Z\s]+)/i,
+    /(?:نوع التأشيرة[:\s]*)([A-Z][a-zA-Z\s]+)/i,
   ];
 
   let fullName = "";
   let passportNumber = "";
   let nationality = "";
+  let visaType = "";
 
   // Try to extract full name
   for (const pattern of namePatterns) {
@@ -100,6 +107,15 @@ function extractVisaInfo(text: string) {
     }
   }
 
+  // Try to extract visa type
+  for (const pattern of visaTypePatterns) {
+    const match = cleanText.match(pattern);
+    if (match && match[1]) {
+      visaType = match[1].trim();
+      break;
+    }
+  }
+
   // Fallback: Look for passport-like patterns anywhere in text
   if (!passportNumber) {
     const passportMatch = cleanText.match(/[A-Z]{1,2}[0-9]{6,9}/);
@@ -119,6 +135,7 @@ function extractVisaInfo(text: string) {
     fullName,
     passportNumber,
     nationality,
+    visaType,
     confidence,
   };
 }
