@@ -11,19 +11,28 @@ export default auth((req) => {
   const pathname = req.nextUrl.pathname;
   const role = req.auth?.user?.role;
 
+  // Allow all auth API routes
   if (isApiAuth) return NextResponse.next();
 
+  // Allow API routes to be handled by their own auth logic
+  if (pathname.startsWith("/api/")) return NextResponse.next();
+
+  // Allow static files
+  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.startsWith("/static")) {
+    return NextResponse.next();
+  }
+
+  // Redirect to login if not logged in (except login page)
   if (!isLoggedIn && !isLoginPage) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
+  // Redirect to dashboard if logged in and on login page
   if (isLoggedIn && isLoginPage) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
+  // Role-based access control
   if (role === "OPERATOR") {
     if (pathname.startsWith("/settings") || pathname.startsWith("/templates")) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
@@ -38,5 +47,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/auth).*)"],
 };
