@@ -26,9 +26,10 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const data = new Uint8Array(buffer);
 
     // Load PDF
-    const loadingTask = pdfjs.getDocument({ data: buffer });
+    const loadingTask = pdfjs.getDocument({ data });
     const pdf = await loadingTask.promise;
 
     // Extract text from all pages
