@@ -197,10 +197,16 @@ export function resolveFieldValue(field: string, context: KashafDataContext): st
     ride: context.ride as Record<string, string | undefined>,
     driver: context.driver as Record<string, string | undefined>,
     vehicle: context.vehicle as Record<string, string | undefined>,
+    third_party: { third_party: context.third_party } as Record<string, string | undefined>,
   };
 
   if (categoryMap[category]) {
     return categoryMap[category][key] || categoryMap[category][field] || "";
+  }
+
+  // Handle top-level fields like third_party
+  if (context[field as keyof KashafDataContext]) {
+    return String(context[field as keyof KashafDataContext]);
   }
 
   for (const cat of Object.values(categoryMap)) {
