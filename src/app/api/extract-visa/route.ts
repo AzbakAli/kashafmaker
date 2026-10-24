@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as pdfjs from "pdfjs-dist";
 
 // Polyfill for Promise.withResolvers (Node.js < 22)
 if (typeof Promise.withResolvers === 'undefined') {
@@ -28,9 +27,15 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const data = new Uint8Array(buffer);
 
-    // Load PDF
-    const loadingTask = pdfjs.getDocument({ data });
-    const pdf = await loadingTask.promise;
+    // Dynamically import pdfjs to avoid worker issues
+    const pdfjs = await import('pdfjs-dist');
+    
+    // Use legacy build to avoid worker issues
+    const pdf = await pdfjs.getDocument({
+      data,
+      useWorkerFetch: false,
+      useSystemFonts: false,
+    }).promise;
 
     // Extract text from all pages
     let fullText = "";
