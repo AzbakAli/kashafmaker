@@ -152,8 +152,12 @@ export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps)
         type="file"
         className="hidden"
         accept="application/pdf,image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp,image/tiff,.pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff"
+        multiple
         onChange={(event) => {
-          void handleFiles(event.target.files?.[0]);
+          const selectedFiles = Array.from(event.target.files || []);
+          if (selectedFiles.length > 0) {
+            void handleFiles(selectedFiles);
+          }
         }}
       />
       {open &&
