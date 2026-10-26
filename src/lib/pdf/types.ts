@@ -122,6 +122,7 @@ export interface KashafDataContext {
     gender?: string;
     visa_type?: string;
   }>;
+  third_party?: string;
 }
 
 export const DYNAMIC_FIELDS = {
@@ -196,6 +197,7 @@ export function resolveFieldValue(field: string, context: KashafDataContext): st
     ride: context.ride as Record<string, string | undefined>,
     driver: context.driver as Record<string, string | undefined>,
     vehicle: context.vehicle as Record<string, string | undefined>,
+    third_party: { third_party: context.third_party } as Record<string, string | undefined>,
   };
 
   if (categoryMap[category]) {
