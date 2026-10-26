@@ -49,7 +49,7 @@ export function getNbisKashafFieldConfig(): TemplateFieldConfig {
       field("p2-visa", "trip_type", 2, 262, 238, 86, { fontSize: 10, pdfBaseline: 543 }),
       field("p2-ride", "ride_number", 2, 368, 238, 92, { fontSize: 10, pdfBaseline: 543 }),
       field("p2-date", "datetime", 2, 482, 238, 92, { fontSize: 10, pdfBaseline: 543 }),
-      field("p2-third", "third_party", 2, 100, 338, 180, { fontSize: 10, pdfBaseline: 323 }),
+
     ],
     passengerTable: {
       page: 2,

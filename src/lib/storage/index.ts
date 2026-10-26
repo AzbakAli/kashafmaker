@@ -36,30 +36,7 @@ export async function saveFile(
   const ext = path.extname(originalName) || ".bin";
   const filename = `${uuidv4()}${ext}`;
   
-  // In production (Netlify/Vercel), use Supabase Storage for documents
-  if (category === "documents" && SUPABASE_URL && SUPABASE_ANON_KEY) {
-    try {
-      const formData = new FormData();
-      formData.append('file', new Blob([buffer], { type: 'application/pdf' }), filename);
-      
-      const response = await fetch(`${SUPABASE_URL}/storage/v1/object/public/${category}/${filename}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: formData,
-      });
-      
-      if (response.ok) {
-        return `${SUPABASE_URL}/storage/v1/object/public/${category}/${filename}`;
-      }
-    } catch (error) {
-      console.error('Failed to upload to Supabase Storage, falling back to local:', error);
-    }
-  }
-  
-  // Fallback to local filesystem
+  // Use local filesystem only
   const filePath = getUploadPath(category, filename);
   await fs.writeFile(filePath, buffer);
   return getRelativePath(category, filename);
