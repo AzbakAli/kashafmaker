@@ -148,12 +148,14 @@ export function Modal({
   title,
   children,
   size = "md",
+  overlayClassName,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  overlayClassName?: string;
 }) {
   if (!open) return null;
 
@@ -165,7 +167,7 @@ export function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center", overlayClassName)}>
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div
         className={cn(

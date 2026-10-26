@@ -1,0 +1,133 @@
+import { loadPdfJs } from "./extract-text";
+import type { LayoutToken } from "@/lib/visa/types";
+import { encodePng, pixelsToRgba, preprocessRgbaToPng } from "@/lib/visa/image-utils";
+
+type PdfImage = {
+  data?: Uint8Array;
+  width?: number;
+  height?: number;
+};
+
+type PdfPage = {
+  getViewport: (options: { scale: number }) => { width: number; height: number };
+  getTextContent: () => Promise<{
+    items: Array<{ str?: string; transform?: number[]; width?: number; height?: number }>;
+  }>;
+  getOperatorList: () => Promise<{ fnArray: number[]; argsArray: unknown[] }>;
+  objs: { get: (name: string, callback: (value: unknown) => void) => void };
+};
+
+export interface PdfLayout {
+  text: string;
+  tokens: LayoutToken[];
+  pageCount: number;
+}
+
+export async function extractPdfLayout(data: Uint8Array): Promise<PdfLayout> {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({
+    data,
+    disableWorker: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+    useWorkerFetch: false,
+  }).promise;
+
+  const tokens: LayoutToken[] = [];
+  const pages: string[] = [];
+  const maxPages = Math.min(pdf.numPages, 3);
+
+  for (let i = 1; i <= maxPages; i++) {
+    const page = (await pdf.getPage(i)) as PdfPage;
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    const pageTokens: LayoutToken[] = [];
+    for (const item of content.items) {
+      const text = (item.str || "").trim();
+      if (!text || !item.transform) continue;
+      pageTokens.push({
+        text,
+        x: item.transform[4],
+        y: viewport.height - item.transform[5] + (i - 1) * (viewport.height + 40),
+        width: item.width || Math.abs(item.transform[0]) || 8,
+        height: item.height || Math.abs(item.transform[3]) || 10,
+      });
+    }
+    tokens.push(...pageTokens);
+    pages.push(pageTokens.map((token) => token.text).join(" "));
+  }
+
+  return {
+    text: pages.join("\n"),
+    tokens,
+    pageCount: pdf.numPages,
+  };
+}
+
+export async function extractPdfEmbeddedImages(data: Uint8Array): Promise<Buffer[]> {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({
+    data,
+    disableWorker: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+    useWorkerFetch: false,
+  }).promise;
+
+  const images: Buffer[] = [];
+  const maxPages = Math.min(pdf.numPages, 2);
+
+  for (let i = 1; i <= maxPages; i++) {
+    const page = (await pdf.getPage(i)) as PdfPage;
+    const ops = await page.getOperatorList();
+    const names = new Set<string>();
+    for (let n = 0; n < ops.fnArray.length; n++) {
+      const fn = ops.fnArray[n];
+      // pdf.js OPS: paintJpegXObject, paintInlineImageXObject, paintImageXObject, paintImageXObjectRepeat
+      if ((fn === 81 || fn === 82 || fn === 85 || fn === 86) && Array.isArray(ops.argsArray[n])) {
+        names.add(String((ops.argsArray[n] as unknown[])[0]));
+      }
+    }
+    for (const name of names) {
+      const img = (await getObject(page, name)) as PdfImage | undefined;
+      if (!img?.data || !img.width || !img.height) continue;
+      if (img.width < 80 || img.height < 80) continue;
+      try {
+        const { width, height, rgba } = pixelsToRgba({
+          data: img.data,
+          width: img.width,
+          height: img.height,
+        });
+        images.push(preprocessRgbaToPng(width, height, rgba));
+      } catch {
+        try {
+          images.push(encodePng(img.width, img.height, pixelsToRgba({
+            data: img.data,
+            width: img.width,
+            height: img.height,
+          }).rgba));
+        } catch {
+          // Skip undecodable embedded images.
+        }
+      }
+      if (images.length >= 2) return images;
+    }
+  }
+
+  return images;
+}
+
+function getObject(page: PdfPage, name: string) {
+  return new Promise<unknown>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), 2000);
+    try {
+      page.objs.get(name, (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(undefined);
+    }
+  });
+}

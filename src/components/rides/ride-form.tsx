@@ -6,7 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { Plus, X, ChevronUp, ChevronDown, FileText, Upload, Loader2 } from "lucide-react";
+import { Plus, X, ChevronUp, ChevronDown } from "lucide-react";
+import { VisaImportButton } from "@/components/passengers/visa-import";
+import { applyVisaFieldsToPassengerForm } from "@/lib/visa/apply-fields";
 
 interface Driver {
   id: string;
@@ -46,19 +48,6 @@ interface RideFormProps {
   };
 }
 
-interface VisaExtractedData {
-  fullName: string;
-  passportNumber: string;
-  nationality: string;
-  visaType: string;
-  confidence: {
-    fullName: 'high' | 'medium' | 'low';
-    passportNumber: 'high' | 'medium' | 'low';
-    nationality: 'high' | 'medium' | 'low';
-    visaType: 'high' | 'medium' | 'low';
-  };
-}
-
 export function RideForm({ rideId, initial }: RideFormProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -76,9 +65,7 @@ export function RideForm({ rideId, initial }: RideFormProps) {
   });
   const [showNewPassenger, setShowNewPassenger] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [visaFiles, setVisaFiles] = useState<File[]>([]);
-  const [extractingVisas, setExtractingVisas] = useState(false);
-  const [extractedPassengers, setExtractedPassengers] = useState<VisaExtractedData[]>([]);
+  const [savingPassenger, setSavingPassenger] = useState(false);
   const skipAutoVehicle = useRef(Boolean(initial?.vehicleId));
 
   const [form, setForm] = useState({
@@ -118,25 +105,30 @@ export function RideForm({ rideId, initial }: RideFormProps) {
   }, [form.driverId, assignedVehicle?.id]);
 
   const createPassenger = async () => {
-    if (!newPassenger.fullName) return;
-    const res = await fetch("/api/passengers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...newPassenger,
-        gender: newPassenger.gender || undefined,
-      }),
-    });
-    if (!res.ok) {
-      toast("Could not add passenger", "error");
-      return;
+    if (!newPassenger.fullName || savingPassenger) return;
+    setSavingPassenger(true);
+    try {
+      const res = await fetch("/api/passengers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...newPassenger,
+          gender: newPassenger.gender || undefined,
+        }),
+      });
+      if (!res.ok) {
+        toast("Could not add passenger", "error");
+        return;
+      }
+      const created = await res.json();
+      setAllPassengers((prev) => [...prev, created]);
+      addPassenger(created);
+      setNewPassenger({ fullName: "", passportNumber: "", nationality: "", gender: "", visaType: "" });
+      setShowNewPassenger(false);
+      toast("Passenger added", "success");
+    } finally {
+      setSavingPassenger(false);
     }
-    const created = await res.json();
-    setAllPassengers((prev) => [...prev, created]);
-    addPassenger(created);
-    setNewPassenger({ fullName: "", passportNumber: "", nationality: "", gender: "", visaType: "" });
-    setShowNewPassenger(false);
-    toast("Passenger added", "success");
   };
 
   const addPassenger = (passenger: Passenger) => {
@@ -161,99 +153,9 @@ export function RideForm({ rideId, initial }: RideFormProps) {
     });
   };
 
-  const handleVisaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    if (pdfFiles.length === 0) {
-      toast("Please upload PDF files only", "error");
-      return;
-    }
-
-    setVisaFiles(pdfFiles);
-    setExtractingVisas(true);
-    setExtractedPassengers([]);
-    e.target.value = "";
-
-    try {
-      const settled = await Promise.allSettled(
-        pdfFiles.map(async (file) => {
-          const formData = new FormData();
-          formData.append("file", file);
-          const res = await fetch("/api/extract-visa", {
-            method: "POST",
-            body: formData,
-          });
-          const payload = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            throw new Error(payload.error || `Failed to extract from ${file.name}`);
-          }
-          return payload as VisaExtractedData;
-        })
-      );
-
-      const results = settled
-        .filter((item): item is PromiseFulfilledResult<VisaExtractedData> => item.status === "fulfilled")
-        .map((item) => item.value);
-      const failures = settled.filter((item) => item.status === "rejected");
-
-      setExtractedPassengers(results);
-
-      if (results.length > 0 && failures.length === 0) {
-        toast(`Successfully extracted data from ${results.length} visa PDF(s)`, "success");
-      } else if (results.length > 0) {
-        toast(`Extracted ${results.length} visa(s); ${failures.length} failed`, "error");
-      } else {
-        const firstError = failures[0] && failures[0].status === "rejected" ? failures[0].reason : null;
-        toast(
-          firstError instanceof Error ? firstError.message : "Failed to extract visa information",
-          "error"
-        );
-      }
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Failed to extract visa information", "error");
-    } finally {
-      setExtractingVisas(false);
-    }
-  };
-
-  const createPassengersFromVisas = async () => {
-    if (extractedPassengers.length === 0) return;
-
-    try {
-      const createPromises = extractedPassengers.map(async (data) => {
-        const res = await fetch("/api/passengers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fullName: data.fullName,
-            passportNumber: data.passportNumber,
-            nationality: data.nationality,
-            visaType: data.visaType,
-            gender: undefined,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(`Failed to create passenger: ${data.fullName} - ${err.error}`);
-        }
-        return res.json();
-      });
-
-      const createdPassengers = await Promise.all(createPromises);
-      setAllPassengers((prev) => [...prev, ...createdPassengers]);
-      setSelectedPassengers((prev) => [...prev, ...createdPassengers]);
-      setExtractedPassengers([]);
-      setVisaFiles([]);
-      toast(`Successfully created ${createdPassengers.length} passengers`, "success");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Failed to create passengers", "error");
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     try {
       const res = await fetch(rideId ? `/api/rides/${rideId}` : "/api/rides", {
@@ -351,52 +253,18 @@ export function RideForm({ rideId, initial }: RideFormProps) {
             <CardContent className="space-y-4 pt-6">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-slate-900">Passengers</h3>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('visa-upload')?.click()}>
-                    <FileText className="h-4 w-4 mr-2" /> Import from Visa PDFs
-                  </Button>
-                  <input
-                    type="file"
-                    id="visa-upload"
-                    accept=".pdf"
-                    multiple
-                    onChange={handleVisaUpload}
-                    className="hidden"
+                <div className="flex flex-wrap gap-2">
+                  <VisaImportButton
+                    onConfirm={(fields) => {
+                      setNewPassenger((current) => applyVisaFieldsToPassengerForm(current, fields));
+                      setShowNewPassenger(true);
+                    }}
                   />
                   <Button type="button" variant="ghost" size="sm" onClick={() => setShowNewPassenger((v) => !v)}>
                     <Plus className="h-4 w-4" /> Add new
                   </Button>
                 </div>
               </div>
-
-              {extractingVisas && (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Extracting data from visa PDFs...
-                </div>
-              )}
-
-              {extractedPassengers.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                  <h4 className="font-medium text-emerald-900">Extracted Passengers ({extractedPassengers.length})</h4>
-                  <div className="space-y-2">
-                    {extractedPassengers.map((p, i) => (
-                      <div key={i} className="rounded bg-white p-3 border border-emerald-100">
-                        <p className="font-medium text-sm">{p.fullName}</p>
-                        <p className="text-xs text-slate-600">
-                          Passport: {p.passportNumber} | Nationality: {p.nationality} | Visa: {p.visaType}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <Button type="button" size="sm" onClick={createPassengersFromVisas} className="bg-emerald-600 hover:bg-emerald-700">
-                    Create {extractedPassengers.length} Passengers
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => { setExtractedPassengers([]); setVisaFiles([]); }}>
-                    Cancel
-                  </Button>
-                </div>
-              )}
 
               {showNewPassenger && (
                 <div className="space-y-2 rounded-lg border border-slate-200 p-3">
@@ -433,8 +301,8 @@ export function RideForm({ rideId, initial }: RideFormProps) {
                       onChange={(e) => setNewPassenger({ ...newPassenger, visaType: e.target.value })}
                     />
                   </div>
-                  <Button type="button" size="sm" onClick={createPassenger}>
-                    Save passenger
+                  <Button type="button" size="sm" onClick={createPassenger} disabled={savingPassenger}>
+                    {savingPassenger ? "Saving..." : "Save passenger"}
                   </Button>
                 </div>
               )}

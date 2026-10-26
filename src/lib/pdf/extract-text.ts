@@ -26,10 +26,13 @@ type PdfJsModule = {
   getDocument: (options: Record<string, unknown>) => { promise: Promise<PdfDocument> };
 };
 
-type PdfDocument = {
+export type PdfDocument = {
   numPages: number;
   getPage: (pageNumber: number) => Promise<{
-    getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
+    getTextContent: () => Promise<{ items: Array<{ str?: string; transform?: number[]; width?: number; height?: number }> }>;
+    getViewport: (options: { scale: number }) => { width: number; height: number };
+    getOperatorList: () => Promise<{ fnArray: number[]; argsArray: unknown[] }>;
+    objs: { get: (name: string, callback: (value: unknown) => void) => void };
   }>;
 };
 
@@ -65,7 +68,7 @@ function findPdfJsFiles() {
   throw new Error("pdfjs-dist worker files were not found on the server");
 }
 
-async function loadPdfJs(): Promise<PdfJsModule> {
+export async function loadPdfJs(): Promise<PdfJsModule> {
   const { pdfPath, workerPath } = findPdfJsFiles();
   const pdfjs = (await import(
     /* webpackIgnore: true */ pathToFileURL(pdfPath).href
