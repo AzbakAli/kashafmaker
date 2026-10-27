@@ -269,7 +269,9 @@ export async function generateKashafForRide(rideId: string, templateId?: string)
   return document;
 }
 
-export async function getDashboardStats() {
+type DashboardStats = Awaited<ReturnType<typeof fetchDashboardStats>>;
+
+async function fetchDashboardStats() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -323,4 +325,19 @@ export async function getDashboardStats() {
     kashafDocuments,
     todayRidesList,
   };
+}
+
+let cachedDashboardStats: { data: DashboardStats; expiresAt: number } | null = null;
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const now = Date.now();
+  if (cachedDashboardStats && cachedDashboardStats.expiresAt > now) {
+    return cachedDashboardStats.data;
+  }
+
+  const result = await fetchDashboardStats();
+  // Cache stats for 15 seconds to prevent hammering DB on frequent page navigations
+  cachedDashboardStats = { data: result, expiresAt: now + 15000 };
+
+  return result;
 }

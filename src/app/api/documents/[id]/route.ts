@@ -52,6 +52,7 @@ async function servePdf(id: string, download: boolean) {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${document.documentNumber}.pdf"`,
+      "Cache-Control": "private, max-age=3600",
     },
   });
 }

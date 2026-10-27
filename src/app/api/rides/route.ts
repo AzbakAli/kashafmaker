@@ -46,7 +46,12 @@ export async function GET(request: NextRequest) {
     take: 200,
   });
 
-  return NextResponse.json(rides);
+  return NextResponse.json(rides, {
+    headers: {
+      // 10s fresh, then serve stale for up to 30s while revalidating in bg
+      "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {

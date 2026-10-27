@@ -23,7 +23,11 @@ export async function GET(
   });
 
   if (!ride) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(ride);
+  return NextResponse.json(ride, {
+    headers: {
+      "Cache-Control": "private, max-age=5, stale-while-revalidate=15",
+    },
+  });
 }
 
 export async function PUT(

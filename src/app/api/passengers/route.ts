@@ -24,7 +24,11 @@ export async function GET(request: NextRequest) {
     take: 300,
   });
 
-  return NextResponse.json(passengers);
+  return NextResponse.json(passengers, {
+    headers: {
+      "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {

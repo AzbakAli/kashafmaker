@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileUp, Loader2, ScanSearch } from "lucide-react";
+import { FileUp, Loader2, ScanSearch, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/card";
@@ -20,6 +20,23 @@ const FIELD_META: Array<{ key: VisaFieldKey; label: string }> = [
   { key: "visaType", label: "Visa Type" },
 ];
 
+const EMPTY_DRAFT: PassengerVisaFields = {
+  fullName: "",
+  passportNumber: "",
+  nationality: "",
+  visaType: "",
+};
+
+interface ScanState {
+  file: File;
+  previewUrl: string;
+  status: "pending" | "scanning" | "done" | "error";
+  result: VisaExtractionResult | null;
+  draft: PassengerVisaFields;
+  error: string;
+  confirmed: boolean;
+}
+
 interface VisaImportButtonProps {
   onConfirm: (fields: PassengerVisaFields) => void;
   disabled?: boolean;
@@ -28,125 +45,169 @@ interface VisaImportButtonProps {
 export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
-  const inFlight = useRef(false);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [result, setResult] = useState<VisaExtractionResult | null>(null);
-  const [draft, setDraft] = useState<PassengerVisaFields>({
-    fullName: "",
-    passportNumber: "",
-    nationality: "",
-    visaType: "",
-  });
+  const [scans, setScans] = useState<ScanState[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
 
+  // Revoke all object URLs on unmount
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      scans.forEach((s) => URL.revokeObjectURL(s.previewUrl));
     };
-  }, [previewUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reset = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl("");
-    setFile(null);
-    setResult(null);
-    setError("");
-    setBusy(false);
-    setDraft({ fullName: "", passportNumber: "", nationality: "", visaType: "" });
+    scans.forEach((s) => URL.revokeObjectURL(s.previewUrl));
+    setScans([]);
+    setCurrentIdx(0);
     if (inputRef.current) inputRef.current.value = "";
   };
 
   const close = () => {
-    if (busy || inFlight.current) return;
+    const anyScanning = scans.some((s) => s.status === "scanning");
+    if (anyScanning) return;
     setOpen(false);
     reset();
-  };
-
-  const applyResult = (payload: VisaExtractionResult) => {
-    setResult(payload);
-    setDraft({
-      fullName: payload.fullName,
-      passportNumber: payload.passportNumber,
-      nationality: payload.nationality,
-      visaType: payload.visaType,
-    });
   };
 
   const extractFile = async (selected: File, renderedPage?: Blob) => {
     const formData = new FormData();
-    formData.append("file", renderedPage ? new File([renderedPage], "visa-page.png", { type: "image/png" }) : selected);
+    formData.append(
+      "file",
+      renderedPage ? new File([renderedPage], "visa-page.png", { type: "image/png" }) : selected
+    );
     const res = await fetch("/api/extract-visa", { method: "POST", body: formData });
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(payload.error || "Failed to extract visa information");
-    }
+    if (!res.ok) throw new Error(payload.error || "Failed to extract visa information");
     return payload as VisaExtractionResult;
   };
 
-  const handleFiles = async (selected: File | undefined) => {
-    if (!selected || inFlight.current) return;
-    inFlight.current = true;
-    setOpen(true);
-    setBusy(true);
-    setError("");
-    setResult(null);
-    setFile(selected);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(selected));
+  const scanOne = async (idx: number, file: File) => {
+    // Mark as scanning
+    setScans((prev) =>
+      prev.map((s, i) => (i === idx ? { ...s, status: "scanning", error: "" } : s))
+    );
 
     try {
-      let payload = await extractFile(selected);
-      const isPdf = selected.type === "application/pdf" || selected.name.toLowerCase().endsWith(".pdf");
+      let payload = await extractFile(file);
+      const isPdf =
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
       if ((payload.needsPageRender || !isExtractionComplete(payload)) && isPdf) {
-        const pages = await renderPdfPagesToBlobs(selected, 2);
+        const pages = await renderPdfPagesToBlobs(file, 2);
         for (const page of pages) {
-          const ocrPayload = await extractFile(selected, page);
+          const ocrPayload = await extractFile(file, page);
           payload = mergeExtractions(payload, ocrPayload);
           if (isExtractionComplete(payload)) break;
         }
       }
-      applyResult(payload);
+      const draft: PassengerVisaFields = {
+        fullName: payload.fullName,
+        passportNumber: payload.passportNumber,
+        nationality: payload.nationality,
+        visaType: payload.visaType,
+      };
+      setScans((prev) =>
+        prev.map((s, i) =>
+          i === idx ? { ...s, status: "done", result: payload, draft } : s
+        )
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to extract visa information");
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
+      setScans((prev) =>
+        prev.map((s, i) =>
+          i === idx
+            ? { ...s, status: "error", error: err instanceof Error ? err.message : "Extraction failed" }
+            : s
+        )
+      );
     }
   };
 
-  const retry = async () => {
-    if (!file || busy || inFlight.current) return;
-    await handleFiles(file);
+  const handleFiles = (files: File[]) => {
+    if (files.length === 0) return;
+
+    // Revoke previous URLs
+    scans.forEach((s) => URL.revokeObjectURL(s.previewUrl));
+
+    const newScans: ScanState[] = files.map((f) => ({
+      file: f,
+      previewUrl: URL.createObjectURL(f),
+      status: "pending",
+      result: null,
+      draft: { ...EMPTY_DRAFT },
+      error: "",
+      confirmed: false,
+    }));
+
+    setScans(newScans);
+    setCurrentIdx(0);
+    setOpen(true);
+    if (inputRef.current) inputRef.current.value = "";
+
+    // Kick off scanning all files concurrently
+    newScans.forEach((s, i) => {
+      void scanOne(i, s.file);
+    });
   };
 
-  const confirm = () => {
-    if (busy || inFlight.current || !result) return;
-    onConfirm({
-      fullName: draft.fullName.trim(),
-      passportNumber: draft.passportNumber.trim(),
-      nationality: draft.nationality.trim(),
-      visaType: draft.visaType.trim(),
-    });
-    toast("Visa fields copied into the Add Passenger form. Review them, then save.", "success");
-    setOpen(false);
-    reset();
+  const retry = (idx: number) => {
+    const scan = scans[idx];
+    if (!scan || scan.status === "scanning") return;
+    void scanOne(idx, scan.file);
   };
+
+  const confirmCurrent = () => {
+    const scan = scans[currentIdx];
+    if (!scan || scan.status !== "done") return;
+    onConfirm({
+      fullName: scan.draft.fullName.trim(),
+      passportNumber: scan.draft.passportNumber.trim(),
+      nationality: scan.draft.nationality.trim(),
+      visaType: scan.draft.visaType.trim(),
+    });
+    toast(
+      `Visa fields for "${scan.draft.fullName || "passenger"}" copied into the form.`,
+      "success"
+    );
+    // Mark as confirmed and advance
+    setScans((prev) =>
+      prev.map((s, i) => (i === currentIdx ? { ...s, confirmed: true } : s))
+    );
+    // Move to next unconfirmed if possible
+    const nextIdx = scans.findIndex((s, i) => i > currentIdx && !s.confirmed);
+    if (nextIdx !== -1) setCurrentIdx(nextIdx);
+  };
+
+  const updateDraft = (idx: number, key: VisaFieldKey, value: string) => {
+    setScans((prev) =>
+      prev.map((s, i) =>
+        i === idx ? { ...s, draft: { ...s.draft, [key]: value } } : s
+      )
+    );
+  };
+
+  const current = scans[currentIdx];
+  const totalConfirmed = scans.filter((s) => s.confirmed).length;
+  const anyScanning = scans.some((s) => s.status === "scanning");
 
   return (
     <>
       <Button
         type="button"
         variant="outline"
-        disabled={disabled || busy}
+        disabled={disabled || anyScanning}
         onClick={() => inputRef.current?.click()}
       >
         <ScanSearch className="h-4 w-4" />
-        Import Passenger from Visa
+        Import from Visa
+        {scans.length > 1 && (
+          <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">
+            {totalConfirmed}/{scans.length}
+          </span>
+        )}
       </Button>
+
+      {/* Hidden file input — multiple files allowed */}
       <input
         ref={inputRef}
         type="file"
@@ -154,77 +215,180 @@ export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps)
         accept="application/pdf,image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp,image/tiff,.pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff"
         multiple
         onChange={(event) => {
-          const selectedFiles = Array.from(event.target.files || []);
-          if (selectedFiles.length > 0) {
-            void handleFiles(selectedFiles[0]);
-          }
+          const files = Array.from(event.target.files || []);
+          if (files.length > 0) handleFiles(files);
         }}
       />
+
       {open &&
         typeof document !== "undefined" &&
         createPortal(
-          <Modal open={open} onClose={close} title="Review visa extraction" size="xl" overlayClassName="z-[80]">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-            <div className="border-b border-slate-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-              Source document
-            </div>
-            <div className="flex min-h-[280px] items-center justify-center p-3">
-              {file && previewUrl && isImageFile(file) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewUrl} alt="Uploaded visa" className="max-h-[420px] w-full object-contain" />
-              ) : previewUrl ? (
-                <iframe title="Visa PDF preview" src={previewUrl} className="h-[420px] w-full rounded-md bg-white" />
-              ) : (
-                <div className="text-sm text-slate-500">No document loaded</div>
-              )}
-            </div>
-          </div>
+          <Modal
+            open={open}
+            onClose={close}
+            title={
+              scans.length > 1
+                ? `Scan visa ${currentIdx + 1} of ${scans.length}`
+                : "Review visa extraction"
+            }
+            size="xl"
+            overlayClassName="z-[80]"
+          >
+            {/* Multi-file tab strip */}
+            {scans.length > 1 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {scans.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setCurrentIdx(i)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                      i === currentIdx
+                        ? "bg-indigo-600 text-white"
+                        : s.confirmed
+                        ? "bg-emerald-100 text-emerald-700"
+                        : s.status === "error"
+                        ? "bg-red-100 text-red-700"
+                        : s.status === "scanning"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-600"
+                    )}
+                  >
+                    {s.confirmed ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : s.status === "scanning" ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : null}
+                    Visa {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
 
-          <div className="space-y-4">
-            {busy && (
-              <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Reading the visa. This stays on your server and is not sent to an external OCR API.
+            {current && (
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Preview panel */}
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="border-b border-slate-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    {current.file.name}
+                  </div>
+                  <div className="flex min-h-[280px] items-center justify-center p-3">
+                    {isImageFile(current.file) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={current.previewUrl}
+                        alt="Uploaded visa"
+                        className="max-h-[420px] w-full object-contain"
+                      />
+                    ) : (
+                      <iframe
+                        title="Visa PDF preview"
+                        src={current.previewUrl}
+                        className="h-[420px] w-full rounded-md bg-white"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Fields panel */}
+                <div className="space-y-4">
+                  {current.status === "scanning" && (
+                    <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Scanning… stays on your server, no external OCR.
+                    </div>
+                  )}
+                  {current.status === "error" && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {current.error}
+                    </div>
+                  )}
+                  {current.confirmed && (
+                    <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Added to form — select another visa or close.
+                    </div>
+                  )}
+                  {current.result && !current.confirmed && (
+                    <p className="text-xs text-slate-500">
+                      Extracted via {methodLabel(current.result.method)}. Highlighted fields need a
+                      manual check before you save the passenger.
+                    </p>
+                  )}
+
+                  {FIELD_META.map(({ key, label }) => {
+                    const meta = current.result?.fields[key];
+                    return (
+                      <ReviewField
+                        key={key}
+                        label={label}
+                        value={current.draft[key]}
+                        meta={meta}
+                        disabled={current.status === "scanning" || current.confirmed}
+                        onChange={(value) => updateDraft(currentIdx, key, value)}
+                      />
+                    );
+                  })}
+
+                  {/* Navigation + actions */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4">
+                    <div className="flex gap-2">
+                      {scans.length > 1 && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={currentIdx === 0}
+                            onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={currentIdx === scans.length - 1}
+                            onClick={() => setCurrentIdx((i) => Math.min(scans.length - 1, i + 1))}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => retry(currentIdx)}
+                        disabled={current.status === "scanning"}
+                      >
+                        <FileUp className="h-4 w-4" />
+                        Retry
+                      </Button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" onClick={close} disabled={anyScanning}>
+                        {totalConfirmed > 0 ? "Done" : "Cancel"}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={confirmCurrent}
+                        disabled={
+                          current.status !== "done" || current.confirmed
+                        }
+                      >
+                        {current.confirmed ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4" /> Added
+                          </>
+                        ) : (
+                          "Confirm and Fill"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
-            {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-            {result && (
-              <p className="text-xs text-slate-500">
-                Extracted via {methodLabel(result.method)}. Highlighted fields need a manual check before you save the passenger.
-              </p>
-            )}
-            {FIELD_META.map(({ key, label }) => {
-              const meta = result?.fields[key];
-              return (
-                <ReviewField
-                  key={key}
-                  label={label}
-                  value={draft[key]}
-                  meta={meta}
-                  disabled={busy}
-                  onChange={(value) => setDraft((current) => ({ ...current, [key]: value }))}
-                />
-              );
-            })}
-            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
-              <Button type="button" variant="outline" onClick={close} disabled={busy}>
-                Cancel
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => void retry()} disabled={busy || !file}>
-                <FileUp className="h-4 w-4" />
-                Retry
-              </Button>
-              <Button type="button" onClick={confirm} disabled={busy || !result}>
-                Confirm and Fill
-              </Button>
-            </div>
-          </div>
-        </div>
           </Modal>,
           document.body
         )}
@@ -263,8 +427,8 @@ function ReviewField({
         {status === "missing"
           ? "Missing — leave blank unless you can read it from the document."
           : status === "needs_review"
-            ? meta?.warning || "Please confirm this value against the document."
-            : "Matched from a labeled field. Still confirm before saving."}
+          ? meta?.warning || "Please confirm this value against the document."
+          : "Matched from a labeled field. Still confirm before saving."}
       </p>
     </div>
   );

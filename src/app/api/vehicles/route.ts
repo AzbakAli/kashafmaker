@@ -12,7 +12,11 @@ export async function GET(request: NextRequest) {
     searchParams.get("q") || undefined,
     searchParams.get("status") || undefined
   );
-  return NextResponse.json(vehicles);
+  return NextResponse.json(vehicles, {
+    headers: {
+      "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {

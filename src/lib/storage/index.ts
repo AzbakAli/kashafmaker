@@ -42,16 +42,48 @@ export async function saveFile(
   return getRelativePath(category, filename);
 }
 
+const urlCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
+
 export async function readFile(relativePath: string): Promise<Buffer> {
   const safe = relativePath.replace(/\\/g, "/");
 
-  // URLs (Supabase etc.) — fetch directly, no local intercept
+  // URLs (Supabase etc.) — with in-memory caching (10 min TTL) and local fallback
   if (safe.startsWith("http://") || safe.startsWith("https://")) {
-    const response = await fetch(safe, { signal: AbortSignal.timeout(12000) });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch file from ${safe}`);
+    const cached = urlCache.get(safe);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.buffer;
     }
-    return Buffer.from(await response.arrayBuffer());
+
+    try {
+      const response = await fetch(safe, { signal: AbortSignal.timeout(6000) });
+      if (response.ok) {
+        const buf = Buffer.from(await response.arrayBuffer());
+        urlCache.set(safe, { buffer: buf, expiresAt: Date.now() + 10 * 60 * 1000 });
+        return buf;
+      }
+    } catch {
+      // If network fails/times out, check local fallback below
+    }
+
+    // Local fallback if Supabase network fetch fails or times out
+    if (safe.includes("nbis-kashaf.pdf")) {
+      const fallbacks = [
+        path.join(process.cwd(), "uploads", "templates", "nbis-kashaf.pdf"),
+        path.join(process.cwd(), "assets", "nbis-kashaf.pdf"),
+        path.join(process.cwd(), "template.pdf"),
+      ];
+      for (const fb of fallbacks) {
+        try {
+          const buf = await fs.readFile(fb);
+          urlCache.set(safe, { buffer: buf, expiresAt: Date.now() + 5 * 60 * 1000 });
+          return buf;
+        } catch {
+          /* try next */
+        }
+      }
+    }
+
+    throw new Error(`Failed to fetch file from ${safe}`);
   }
 
   // If it's already an absolute path (for testing), try to read it directly
