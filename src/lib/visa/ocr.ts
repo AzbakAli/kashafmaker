@@ -82,10 +82,11 @@ async function getWorker() {
   if (!globalForOcr.kashafTesseractWorker) {
     globalForOcr.kashafTesseractWorker = (async () => {
       const { createWorker } = await import("tesseract.js");
+      const options = { langPath: process.cwd(), gzip: false, logger: () => undefined };
       try {
-        return (await createWorker("eng+ara", 1, { logger: () => undefined })) as unknown as TesseractWorker;
+        return (await createWorker("eng+ara", 1, options)) as unknown as TesseractWorker;
       } catch {
-        return (await createWorker("eng", 1, { logger: () => undefined })) as unknown as TesseractWorker;
+        return (await createWorker("eng", 1, options)) as unknown as TesseractWorker;
       }
     })();
   }

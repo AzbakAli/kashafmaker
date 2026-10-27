@@ -213,6 +213,15 @@ export function resolveFieldValue(field: string, context: KashafDataContext): st
     if (cat[field]) return cat[field] || "";
   }
 
+  if (field === "third_party") {
+    if (context.third_party) return context.third_party;
+    if (context.passengers && context.passengers.length > 0) {
+      const first = context.passengers[0].passenger_name || "";
+      const others = context.passengers.length > 1 ? ` and ${context.passengers.length - 1} others` : "";
+      return `${first}${others}`;
+    }
+    return "";
+  }
   if (field === "destination") return context.ride.destination || "";
   if (field === "pickup") return context.ride.pickup || "";
   if (field === "datetime") return context.ride.datetime || `${context.ride.date || ""} ${context.ride.time || ""}`.trim();
@@ -221,11 +230,20 @@ export function resolveFieldValue(field: string, context: KashafDataContext): st
 }
 
 export function buildContextFromSnapshot(snapshot: Record<string, unknown>): KashafDataContext {
+  const passengers = (snapshot.passengers as KashafDataContext["passengers"]) || [];
+  const thirdParty =
+    typeof snapshot.third_party === "string"
+      ? snapshot.third_party
+      : passengers.length > 0
+        ? `${passengers[0]?.passenger_name || ""}${passengers.length > 1 ? ` and ${passengers.length - 1} others` : ""}`
+        : undefined;
+
   return {
     company: (snapshot.company as KashafDataContext["company"]) || {},
     ride: (snapshot.ride as KashafDataContext["ride"]) || {},
     driver: (snapshot.driver as KashafDataContext["driver"]) || {},
     vehicle: (snapshot.vehicle as KashafDataContext["vehicle"]) || {},
-    passengers: (snapshot.passengers as KashafDataContext["passengers"]) || [],
+    passengers,
+    third_party: thirdParty,
   };
 }

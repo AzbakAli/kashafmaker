@@ -156,7 +156,7 @@ export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps)
         onChange={(event) => {
           const selectedFiles = Array.from(event.target.files || []);
           if (selectedFiles.length > 0) {
-            void handleFiles(selectedFiles);
+            void handleFiles(selectedFiles[0]);
           }
         }}
       />

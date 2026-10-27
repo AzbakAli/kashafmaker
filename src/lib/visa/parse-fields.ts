@@ -9,7 +9,22 @@ import {
 } from "./types";
 
 const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
-  { field: "fullName", patterns: [/^full\s*name$/, /^holder\s*name$/, /^passenger\s*name$/, /^name$/, /^الاسم$/, /^اسم$/] },
+  {
+    field: "fullName",
+    patterns: [
+      /^full\s*name$/,
+      /^holder\s*name$/,
+      /^passenger\s*name$/,
+      /^name$/,
+      /^name\s+of\s+(?:the\s+)?(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
+      /^full\s+name\s+of\s+(?:the\s+)?(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
+      /^الاسم$/,
+      /^اسم$/,
+      /^اسم\s+المسافر$/,
+      /^اسم\s+المعتمر$/,
+      /^اسم\s+صاحب\s+الجواز$/,
+    ],
+  },
   {
     field: "passportNumber",
     patterns: [
@@ -42,6 +57,11 @@ const STOP_LABELS: Array<{ id: string; patterns: RegExp[] }> = [
   { id: "birth_date", patterns: [/^birth\s*date$/, /^date\s*of\s*birth$/, /^dob$/, /^تاريخ\s*الميلاد$/] },
   { id: "gender", patterns: [/^gender$/, /^sex$/, /^الجنس$/] },
   { id: "country_of_birth", patterns: [/^country\s*of\s*birth$/] },
+  { id: "sponsor", patterns: [/^(?:the\s+)?sponsor$/, /^(?:the\s+)?carrier$/, /^(?:the\s+)?company$/, /^(?:the\s+)?employer$/, /^الكفيل$/, /^جهة\s*العمل$/, /^صاحب\s*العمل$/, /^الناقل$/, /^المستقدم$/, /^الشركة$/] },
+  { id: "purpose", patterns: [/^(?:the\s+)?purpose(?:\s+of\s+visit)?$/, /^الغرض$/] },
+  { id: "applicant", patterns: [/^(?:the\s+)?applicant$/, /^مقدم\s*الطلب$/] },
+  { id: "port_of_entry", patterns: [/^(?:the\s+)?port\s*of\s*entry$/, /^(?:the\s+)?port$/, /^جهة\s*القدوم$/, /^المنفذ$/] },
+  { id: "mahram", patterns: [/^(?:the\s+)?mahram$/, /^المحرم$/] },
 ];
 
 const NAME_BLOCKLIST = [
@@ -279,7 +299,7 @@ function mergeValues(
 function finalizeName(hit: { value: string; labeled: true } | undefined, fromOcr: boolean): FieldResult {
   if (!hit?.value) return missing("Could not find a Name field.");
   let value = preferEnglishValue(hit.value);
-  value = value.replace(/[|:;]+$/g, "").trim();
+  value = stripNameNoise(value);
   if (!value) return missing("The Name field was empty.");
   if (isBlockedName(value)) {
     return {
@@ -373,11 +393,9 @@ function finalizeVisaType(hit: { value: string; labeled: true } | undefined, fro
     const arabic = collapseSpaces((hit.value.match(arabicRuns()) || []).join(" "));
     if (ARABIC_VISA_TYPE[arabic]) value = ARABIC_VISA_TYPE[arabic];
   }
-  // Strip entry type and other trailing text
-  value = stripEntryTypeTail(value);
-  // Also strip common trailing text that's not part of visa type
+  // Strip trailing text like operator or agency that comes after the visa type (do not strip tourism)
   value = value
-    .replace(/\b(operator|agency|company|service|travel|tourism)\b.*$/i, "")
+    .replace(/\b(tour\s*operator|travel\s*agency|umrah\s*operator|agency|company|service\s*provider)\b.*$/i, "")
     .replace(/\s*\([^)]*\)\s*$/g, "")
     .trim();
   if (ENTRY_TYPE_VALUES.has(value.toLowerCase())) {
@@ -514,9 +532,22 @@ function normalizeLabel(value: string) {
     .trim();
 }
 
+function stripNameNoise(value: string): string {
+  let cleaned = value
+    // Remove leading "Name of the ...", "Name of ...", "The ...", etc.
+    .replace(/^(?:name\s+of\s+)?(?:of\s+)?the\s+(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)?\s*[:.\-]?\s*/gi, "")
+    // Remove trailing stop words like "the sponsor ...", "the carrier ...", "the company ...", etc.
+    .replace(/\s+\b(?:the|of\s+the)\s+(?:sponsor|carrier|company|employer|applicant|purpose|mahram|port|operator|agency|service|relationship|border|embassy|consulate|pilgrim|nationality|passport|visa)\b.*$/gi, "")
+    // Remove any remaining whole word "the" or "of the" from name
+    .replace(/\b(?:of\s+)?the\b/gi, "")
+    .replace(/[|:;]+$/g, "");
+  return collapseSpaces(cleaned);
+}
+
 function cleanCapturedValue(value: string, field: VisaFieldKey) {
   let cleaned = stripKnownLabels(value);
   cleaned = preferEnglishValue(cleaned);
+  if (field === "fullName") cleaned = stripNameNoise(cleaned);
   if (field === "visaType") cleaned = stripEntryTypeTail(cleaned);
   return cleaned;
 }

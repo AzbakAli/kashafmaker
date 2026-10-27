@@ -82,6 +82,8 @@ export default function RideDetailPage() {
         const err = await res.json();
         throw new Error(err.error);
       }
+      const newDoc = await res.json();
+      setRide((prev) => (prev ? { ...prev, kashafDocuments: [newDoc, ...prev.kashafDocuments] } : null));
       toast("Kashaf generated successfully", "success");
       fetchRide();
     } catch (error) {

@@ -45,9 +45,9 @@ export async function saveFile(
 export async function readFile(relativePath: string): Promise<Buffer> {
   const safe = relativePath.replace(/\\/g, "/");
 
-  // If it's a Supabase Storage URL, fetch it
+  // URLs (Supabase etc.) — fetch directly, no local intercept
   if (safe.startsWith("http://") || safe.startsWith("https://")) {
-    const response = await fetch(safe);
+    const response = await fetch(safe, { signal: AbortSignal.timeout(12000) });
     if (!response.ok) {
       throw new Error(`Failed to fetch file from ${safe}`);
     }
@@ -59,9 +59,24 @@ export async function readFile(relativePath: string): Promise<Buffer> {
     return fs.readFile(safe);
   }
 
-  // Otherwise, read from local filesystem
-  const filePath = path.join(UPLOAD_DIR, safe);
-  return fs.readFile(filePath);
+  // Otherwise, read from local filesystem with fallbacks
+  const candidates = [
+    path.join(UPLOAD_DIR, safe),
+    path.join(process.cwd(), "uploads", safe),
+    path.join(process.cwd(), safe),
+    path.join("/tmp", safe),
+  ];
+
+  for (const filePath of candidates) {
+    try {
+      await fs.access(filePath);
+      return await fs.readFile(filePath);
+    } catch {
+      /* try next */
+    }
+  }
+
+  throw new Error(`File not found: ${safe}`);
 }
 
 export async function deleteFile(relativePath: string): Promise<void> {
@@ -85,15 +100,28 @@ export async function fileExists(relativePath: string): Promise<boolean> {
   try {
     const safe = relativePath.replace(/\\/g, "/");
 
-    // If it's a Supabase Storage URL, try to fetch it
+    // URLs — do a HEAD request
     if (safe.startsWith("http://") || safe.startsWith("https://")) {
-      const response = await fetch(safe, { method: "HEAD" });
+      const response = await fetch(safe, { method: "HEAD", signal: AbortSignal.timeout(4000) });
       return response.ok;
     }
 
-    const filePath = path.join(UPLOAD_DIR, safe);
-    await fs.access(filePath);
-    return true;
+    const candidatePaths = [
+      path.join(UPLOAD_DIR, safe),
+      path.join(process.cwd(), "uploads", safe),
+      path.join(process.cwd(), safe),
+      path.join("/tmp", safe),
+    ];
+    for (const p of candidatePaths) {
+      try {
+        await fs.access(p);
+        return true;
+      } catch {
+        /* try next */
+      }
+    }
+
+    return false;
   } catch {
     return false;
   }

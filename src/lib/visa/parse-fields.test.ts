@@ -252,4 +252,19 @@ describe("parseVisaFields", () => {
     expect(result.nationality).toBe("France");
     expect(result.visaType).toBe("Tourism Visit");
   });
+
+  it("strips 'the' when attached or adjacent to passenger name", () => {
+    const cases = [
+      "Name ALEXANDRE MARTIN the\nPassport No. 12AB34567\nNationality France\nType Of Visa Tourism Visit",
+      "Name The ALEXANDRE MARTIN\nPassport No. 12AB34567\nNationality France\nType Of Visa Tourism Visit",
+      "Name of the Passenger: ALEXANDRE MARTIN\nPassport No. 12AB34567\nNationality France\nType Of Visa Tourism Visit",
+      "Name ALEXANDRE MARTIN The Sponsor\nPassport No. 12AB34567\nNationality France\nType Of Visa Tourism Visit",
+    ];
+    for (const text of cases) {
+      const result = parseVisaFields({ text });
+      expect(result.fullName).toBe("ALEXANDRE MARTIN");
+      expect(result.fullName).not.toContain("the");
+      expect(result.fullName).not.toContain("The");
+    }
+  });
 });

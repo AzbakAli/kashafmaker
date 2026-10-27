@@ -29,14 +29,35 @@ function containsArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);
 }
 
+const fontBytesCache = new Map<string, Buffer>();
+
+async function readFontBytes(fontFileName: string): Promise<Buffer | null> {
+  if (fontBytesCache.has(fontFileName)) {
+    return fontBytesCache.get(fontFileName)!;
+  }
+  const candidates = [
+    path.join(UPLOAD_DIR, "fonts", fontFileName),
+    path.join(process.cwd(), "uploads", "fonts", fontFileName),
+    path.join(process.cwd(), "assets", fontFileName),
+  ];
+  for (const fontPath of candidates) {
+    try {
+      const bytes = await fs.readFile(fontPath);
+      fontBytesCache.set(fontFileName, bytes);
+      return bytes;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
 async function loadFont(
   pdfDoc: PDFDocument,
   fontFamily: string,
   bold: boolean,
   forArabic = false
 ): Promise<PDFFont> {
-  const fontsDir = path.join(UPLOAD_DIR, "fonts");
-
   const fontMap: Record<string, string> = {
     Helvetica: bold ? "Helvetica-Bold" : "Helvetica",
     Arial: bold ? "Helvetica-Bold" : "Helvetica",
@@ -46,25 +67,28 @@ async function loadFont(
   };
 
   if (forArabic) {
-    try {
-      const fontPath = path.join(fontsDir, "NotoSansArabic-Regular.ttf");
-      const fontBytes = await fs.readFile(fontPath);
-      return pdfDoc.embedFont(fontBytes, { subset: true });
-    } catch {
-      /* fall through */
+    const fontBytes = await readFontBytes("NotoSansArabic-Regular.ttf");
+    if (fontBytes) {
+      try {
+        return await pdfDoc.embedFont(fontBytes, { subset: true });
+      } catch {
+        /* fall through */
+      }
     }
   }
 
   const mapped = fontMap[fontFamily] || fontMap["Helvetica"];
 
   if (mapped.endsWith(".ttf")) {
-    try {
-      const fontPath = path.join(fontsDir, mapped);
-      const fontBytes = await fs.readFile(fontPath);
-      return pdfDoc.embedFont(fontBytes, { subset: true });
-    } catch {
-      return pdfDoc.embedFont(bold ? StandardFonts.HelveticaBold : StandardFonts.Helvetica);
+    const fontBytes = await readFontBytes(mapped);
+    if (fontBytes) {
+      try {
+        return await pdfDoc.embedFont(fontBytes, { subset: true });
+      } catch {
+        /* fall through */
+      }
     }
+    return pdfDoc.embedFont(bold ? StandardFonts.HelveticaBold : StandardFonts.Helvetica);
   }
 
   return pdfDoc.embedFont(mapped as StandardFonts);
@@ -137,17 +161,29 @@ function coverWithBackground(
   page.pushOperators(popGraphicsState());
 }
 
+let cachedLetterheadBytes: Buffer | null = null;
+
 async function loadLetterhead(pdfDoc: PDFDocument): Promise<PDFImage | null> {
-  const candidates = [
-    path.join(process.cwd(), "assets", "nbis-letterhead.png"),
-    path.join(UPLOAD_DIR, "templates", "nbis-letterhead.png"),
-  ];
-  for (const file of candidates) {
+  if (!cachedLetterheadBytes) {
+    const candidates = [
+      path.join(process.cwd(), "assets", "nbis-letterhead.png"),
+      path.join(UPLOAD_DIR, "templates", "nbis-letterhead.png"),
+      path.join(process.cwd(), "uploads", "templates", "nbis-letterhead.png"),
+    ];
+    for (const file of candidates) {
+      try {
+        cachedLetterheadBytes = await fs.readFile(file);
+        break;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  if (cachedLetterheadBytes) {
     try {
-      const bytes = await fs.readFile(file);
-      return pdfDoc.embedPng(bytes);
+      return await pdfDoc.embedPng(cachedLetterheadBytes);
     } catch {
-      /* try next */
+      /* fall through */
     }
   }
   return null;
@@ -452,5 +488,6 @@ export function getSampleContext(): KashafDataContext {
         visa_type: "Umrah",
       },
     ],
+    third_party: "Mansoor Ahmed and 2 others",
   };
 }

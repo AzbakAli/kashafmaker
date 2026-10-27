@@ -4,20 +4,56 @@ import { prisma } from "@/lib/db/prisma";
 import { readFile, deleteFile } from "@/lib/storage";
 
 async function servePdf(id: string, download: boolean) {
-  const document = await prisma.kashafDocument.findUnique({ where: { id } });
-  if (!document?.filePath) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const document = await prisma.kashafDocument.findUnique({
+    where: { id },
+    include: { template: true },
+  });
+  if (!document) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  try {
-    const buffer = await readFile(document.filePath);
-    return new NextResponse(new Uint8Array(buffer), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${document.documentNumber}.pdf"`,
-      },
-    });
-  } catch {
+  let buffer: Buffer | null = null;
+  if (document.filePath) {
+    try {
+      buffer = await readFile(document.filePath);
+    } catch {
+      buffer = null;
+    }
+  }
+
+  // Self-healing: if PDF is missing on disk (e.g. serverless recycled /tmp), regenerate from snapshot!
+  if (!buffer && document.snapshot && document.template) {
+    try {
+      const { generateKashafPdf, buildContextFromSnapshot, isNbisStyleTemplate, getNbisKashafFieldConfig } = await import("@/lib/pdf");
+      const { saveFile } = await import("@/lib/storage");
+      const context = buildContextFromSnapshot(document.snapshot as Record<string, unknown>);
+      const fieldConfig = isNbisStyleTemplate(document.template.pageCount)
+        ? getNbisKashafFieldConfig()
+        : (document.template.fieldConfig as unknown as import("@/lib/pdf").TemplateFieldConfig);
+      const pdfBytes = await generateKashafPdf(document.template.filePath, fieldConfig, context);
+      buffer = Buffer.from(pdfBytes);
+      try {
+        const newPath = await saveFile("documents", buffer, `${document.documentNumber}.pdf`);
+        await prisma.kashafDocument.update({
+          where: { id },
+          data: { filePath: newPath },
+        });
+      } catch {
+        /* ignore cache update failure */
+      }
+    } catch (regenError) {
+      console.error("Failed to regenerate missing PDF:", regenError);
+    }
+  }
+
+  if (!buffer) {
     return NextResponse.json({ error: "PDF file is missing on disk" }, { status: 404 });
   }
+
+  return new NextResponse(new Uint8Array(buffer), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${document.documentNumber}.pdf"`,
+    },
+  });
 }
 
 export async function GET(
