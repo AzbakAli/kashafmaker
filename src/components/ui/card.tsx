@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 interface CardProps {
   children: ReactNode;
@@ -36,33 +38,52 @@ export function StatCard({
   icon: Icon,
   trend,
   className,
+  href,
+  actionLabel,
 }: {
   title: string;
   value: string | number;
   icon?: React.ComponentType<{ className?: string }>;
   trend?: string;
   className?: string;
+  href?: string;
+  actionLabel?: string;
 }) {
-  return (
-    <Card className={className}>
-      <CardContent>
+  const cardContent = (
+    <Card className={cn(
+      "transition-all duration-200 overflow-hidden",
+      href && "hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 cursor-pointer group",
+      className
+    )}>
+      <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <p className="text-sm font-medium text-slate-600 uppercase tracking-wide">{title}</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900">{value}</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{title}</p>
+            <p className="mt-2 text-3xl font-extrabold text-slate-900 tracking-tight">{value}</p>
             {trend && (
               <p className="mt-1 text-xs font-medium text-slate-500">{trend}</p>
             )}
           </div>
           {Icon && (
-            <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 p-3 shadow-sm">
-              <Icon className="h-6 w-6 text-indigo-600" />
+            <div className="rounded-xl bg-slate-100/80 p-3 text-slate-600 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600">
+              <Icon className="h-6 w-6" />
             </div>
           )}
         </div>
+        {href && (
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-indigo-600 group-hover:text-indigo-700">
+            <span>{actionLabel || "View details"}</span>
+            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
+
+  if (href) {
+    return <Link href={href} className="block">{cardContent}</Link>;
+  }
+  return cardContent;
 }
 
 interface BadgeProps {

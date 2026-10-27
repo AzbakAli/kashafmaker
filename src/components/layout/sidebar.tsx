@@ -68,15 +68,18 @@ export function Sidebar({ userName }: { userName?: string }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-6 bg-gradient-to-r from-indigo-600 to-purple-600">
+        <Link
+          href="/dashboard"
+          className="flex h-16 items-center gap-3 border-b border-slate-200 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 transition-opacity"
+        >
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/20">
             <Car className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">KashafMake</h1>
-            <p className="text-xs text-indigo-100">Transport Management</p>
+            <h1 className="text-lg font-bold text-white tracking-tight">KashafMake</h1>
+            <p className="text-[11px] text-indigo-100 font-medium">Transport Operations</p>
           </div>
-        </div>
+        </Link>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {items.map((item) => {
