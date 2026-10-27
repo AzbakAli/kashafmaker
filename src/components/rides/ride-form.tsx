@@ -376,6 +376,34 @@ export function RideForm({ rideId, initial }: RideFormProps) {
                       setNewPassenger((current) => applyVisaFieldsToPassengerForm(current, fields));
                       setShowNewPassenger(true);
                     }}
+                    onConfirmMultiple={async (passengers) => {
+                      try {
+                        const createPromises = passengers.map(async (data) => {
+                          const res = await fetch("/api/passengers", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              fullName: data.fullName.trim() || "Unknown",
+                              passportNumber: data.passportNumber.trim() || undefined,
+                              nationality: data.nationality.trim() || undefined,
+                              visaType: data.visaType.trim() || undefined,
+                            }),
+                          });
+                          if (!res.ok) throw new Error(`Failed to save ${data.fullName}`);
+                          return res.json();
+                        });
+                        const created = await Promise.all(createPromises);
+                        setAllPassengers((prev) => [...prev, ...created]);
+                        setSelectedPassengers((prev) => {
+                          const existingIds = new Set(prev.map((p) => p.id));
+                          const newOnes = created.filter((p: Passenger) => !existingIds.has(p.id));
+                          return [...prev, ...newOnes];
+                        });
+                        toast(`Successfully added ${created.length} passenger(s) to ride!`, "success");
+                      } catch (err) {
+                        toast(err instanceof Error ? err.message : "Failed to add passengers", "error");
+                      }
+                    }}
                   />
                   <Button type="button" variant="ghost" size="sm" onClick={() => setShowNewPassenger((v) => !v)}>
                     <Plus className="h-4 w-4" /> Add new

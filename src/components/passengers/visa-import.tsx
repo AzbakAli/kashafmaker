@@ -39,10 +39,11 @@ interface ScanState {
 
 interface VisaImportButtonProps {
   onConfirm: (fields: PassengerVisaFields) => void;
+  onConfirmMultiple?: (passengers: PassengerVisaFields[]) => void | Promise<void>;
   disabled?: boolean;
 }
 
-export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps) {
+export function VisaImportButton({ onConfirm, onConfirmMultiple, disabled }: VisaImportButtonProps) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -176,6 +177,32 @@ export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps)
     // Move to next unconfirmed if possible
     const nextIdx = scans.findIndex((s, i) => i > currentIdx && !s.confirmed);
     if (nextIdx !== -1) setCurrentIdx(nextIdx);
+  };
+
+  const confirmAll = async () => {
+    const readyScans = scans.filter((s) => s.status === "done" && s.draft.fullName.trim());
+    if (readyScans.length === 0) {
+      toast("No completed visa extractions to import", "error");
+      return;
+    }
+
+    const allDrafts = readyScans.map((s) => ({
+      fullName: s.draft.fullName.trim(),
+      passportNumber: s.draft.passportNumber.trim(),
+      nationality: s.draft.nationality.trim(),
+      visaType: s.draft.visaType.trim(),
+    }));
+
+    if (onConfirmMultiple) {
+      await onConfirmMultiple(allDrafts);
+    } else {
+      for (const draft of allDrafts) {
+        onConfirm(draft);
+      }
+    }
+
+    setOpen(false);
+    reset();
   };
 
   const updateDraft = (idx: number, key: VisaFieldKey, value: string) => {
@@ -365,24 +392,32 @@ export function VisaImportButton({ onConfirm, disabled }: VisaImportButtonProps)
                       </Button>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button type="button" variant="outline" onClick={close} disabled={anyScanning}>
-                        {totalConfirmed > 0 ? "Done" : "Cancel"}
+                        Cancel
                       </Button>
+                      {scans.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={confirmCurrent}
+                          disabled={current.status !== "done" || current.confirmed}
+                        >
+                          {current.confirmed ? "Added Current" : "Add Current Only"}
+                        </Button>
+                      )}
                       <Button
                         type="button"
-                        onClick={confirmCurrent}
+                        onClick={confirmAll}
                         disabled={
-                          current.status !== "done" || current.confirmed
+                          scans.filter((s) => s.status === "done").length === 0 || anyScanning
                         }
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
                       >
-                        {current.confirmed ? (
-                          <>
-                            <CheckCircle2 className="h-4 w-4" /> Added
-                          </>
-                        ) : (
-                          "Confirm and Fill"
-                        )}
+                        <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                        {scans.length > 1
+                          ? `Confirm & Fill All (${scans.filter((s) => s.status === "done").length})`
+                          : "Confirm and Fill"}
                       </Button>
                     </div>
                   </div>

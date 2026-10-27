@@ -59,6 +59,34 @@ export default function PassengersPage() {
     setModalOpen(true);
   };
 
+  const handleImportMultiple = async (items: import("@/lib/visa/apply-fields").PassengerVisaFields[]) => {
+    try {
+      const promises = items.map(async (data) => {
+        const res = await fetch("/api/passengers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: data.fullName.trim() || "Unknown",
+            passportNumber: data.passportNumber.trim() || undefined,
+            nationality: data.nationality.trim() || undefined,
+            visaType: data.visaType.trim() || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Failed to create ${data.fullName}`);
+        }
+        return res.json();
+      });
+
+      await Promise.all(promises);
+      fetchData();
+      toast(`Successfully imported ${items.length} passenger(s)!`, "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to import passengers", "error");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
@@ -121,6 +149,7 @@ export default function PassengersPage() {
                 setForm((current) => applyVisaFieldsToPassengerForm(current, fields));
                 setModalOpen(true);
               }}
+              onConfirmMultiple={handleImportMultiple}
             />
             <Button onClick={openBlankForm}>
               <Plus className="h-4 w-4" /> Add Passenger
@@ -156,6 +185,7 @@ export default function PassengersPage() {
                       setForm((current) => applyVisaFieldsToPassengerForm(current, fields));
                       setModalOpen(true);
                     }}
+                    onConfirmMultiple={handleImportMultiple}
                   />
                   <Button onClick={openBlankForm}>
                     <Plus className="h-4 w-4" /> Add Passenger
@@ -249,6 +279,10 @@ export default function PassengersPage() {
               disabled={saving}
               onConfirm={(fields) => {
                 setForm((current) => applyVisaFieldsToPassengerForm(current, fields));
+              }}
+              onConfirmMultiple={async (passengers) => {
+                await handleImportMultiple(passengers);
+                setModalOpen(false);
               }}
             />
             <p className="mt-2 text-xs text-indigo-800">
