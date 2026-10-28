@@ -1,5 +1,5 @@
 import type { LayoutToken } from "./types";
-import { decodePngRgba, encodePng, rotateRgba } from "./image-utils";
+import { decodePngRgba, encodePng, contrastRgba, downscaleRgba } from "./image-utils";
 
 type TesseractWord = {
   text?: string;
@@ -12,8 +12,8 @@ type TesseractWorker = {
     image: Buffer | Uint8Array,
     options?: Record<string, unknown>
   ) => Promise<{ data: { text: string; words?: TesseractWord[]; confidence?: number } }>;
-  detect: (image: Buffer | Uint8Array) => Promise<{ data: { orientation_degrees?: number } }>;
   terminate: () => Promise<void>;
+  setParameters?: (params: Record<string, unknown>) => Promise<void>;
 };
 
 const globalForOcr = globalThis as typeof globalThis & {
@@ -28,8 +28,8 @@ export interface OcrPageResult {
 
 export async function ocrImageBuffer(image: Buffer): Promise<OcrPageResult> {
   const worker = await getWorker();
-  const prepared = await prepareImage(worker, image);
-  const recognized = await worker.recognize(prepared, { rotateAuto: true });
+  const prepared = prepareImage(image);
+  const recognized = await worker.recognize(prepared);
   const words = recognized.data.words || [];
   const tokens: LayoutToken[] = words
     .filter((word) => (word.text || "").trim())
@@ -64,30 +64,40 @@ export async function ocrImages(images: Buffer[]): Promise<OcrPageResult> {
   };
 }
 
-async function prepareImage(worker: TesseractWorker, image: Buffer) {
+function prepareImage(image: Buffer): Buffer {
   try {
-    const detected = await worker.detect(image);
-    const degrees = normalizeRotation(detected.data.orientation_degrees);
-    if (!degrees) return image;
     const decoded = decodePngRgba(image);
     if (!decoded) return image;
-    const rotated = rotateRgba(decoded.width, decoded.height, decoded.rgba, degrees);
-    return encodePng(rotated.width, rotated.height, rotated.rgba);
+    const downscaled = downscaleRgba(decoded.width, decoded.height, decoded.rgba, 2200);
+    const contrasted = contrastRgba(downscaled.rgba, 1.25);
+    return encodePng(downscaled.width, downscaled.height, contrasted);
   } catch {
     return image;
   }
 }
 
-async function getWorker() {
+async function getWorker(): Promise<TesseractWorker> {
   if (!globalForOcr.kashafTesseractWorker) {
     globalForOcr.kashafTesseractWorker = (async () => {
-      const { createWorker } = await import("tesseract.js");
+      const { createWorker, PSM } = await import("tesseract.js");
       const options = { langPath: process.cwd(), gzip: false, logger: () => undefined };
+      let worker: any;
       try {
-        return (await createWorker("eng+ara", 1, options)) as unknown as TesseractWorker;
+        worker = await createWorker("eng+ara", 1, options);
       } catch {
-        return (await createWorker("eng", 1, options)) as unknown as TesseractWorker;
+        worker = await createWorker("eng", 1, options);
       }
+      try {
+        if (worker.setParameters) {
+          await worker.setParameters({
+            tessedit_pageseg_mode: PSM?.AUTO ?? 3,
+            preserve_interword_spaces: "1",
+          });
+        }
+      } catch {
+        // Continue with default parameters if setParameters fails
+      }
+      return worker as TesseractWorker;
     })();
   }
   try {
@@ -96,11 +106,4 @@ async function getWorker() {
     globalForOcr.kashafTesseractWorker = undefined;
     throw error;
   }
-}
-
-function normalizeRotation(value?: number): 90 | 180 | 270 | null {
-  if (!value) return null;
-  const normalized = ((Math.round(value / 90) * 90) % 360 + 360) % 360;
-  if (normalized === 90 || normalized === 180 || normalized === 270) return normalized;
-  return null;
 }

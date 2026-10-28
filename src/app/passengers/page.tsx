@@ -61,12 +61,12 @@ export default function PassengersPage() {
 
   const handleImportMultiple = async (items: import("@/lib/visa/apply-fields").PassengerVisaFields[]) => {
     try {
-      const promises = items.map(async (data) => {
+      const promises = items.map(async (data, idx) => {
         const res = await fetch("/api/passengers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            fullName: data.fullName.trim() || "Unknown",
+            fullName: data.fullName.trim() || `Passenger ${idx + 1} (${data.passportNumber.trim() || "Visa"})`,
             passportNumber: data.passportNumber.trim() || undefined,
             nationality: data.nationality.trim() || undefined,
             visaType: data.visaType.trim() || undefined,
@@ -74,7 +74,7 @@ export default function PassengersPage() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Failed to create ${data.fullName}`);
+          throw new Error(err.error || `Failed to create ${data.fullName || `Passenger ${idx + 1}`}`);
         }
         return res.json();
       });

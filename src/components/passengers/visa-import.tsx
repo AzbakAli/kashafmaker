@@ -41,9 +41,17 @@ interface VisaImportButtonProps {
   onConfirm: (fields: PassengerVisaFields) => void;
   onConfirmMultiple?: (passengers: PassengerVisaFields[]) => void | Promise<void>;
   disabled?: boolean;
+  label?: string;
+  className?: string;
 }
 
-export function VisaImportButton({ onConfirm, onConfirmMultiple, disabled }: VisaImportButtonProps) {
+export function VisaImportButton({
+  onConfirm,
+  onConfirmMultiple,
+  disabled,
+  label = "Import from Visa",
+  className,
+}: VisaImportButtonProps) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -180,14 +188,16 @@ export function VisaImportButton({ onConfirm, onConfirmMultiple, disabled }: Vis
   };
 
   const confirmAll = async () => {
-    const readyScans = scans.filter((s) => s.status === "done" && s.draft.fullName.trim());
+    const readyScans = scans.filter(
+      (s) => s.status === "done" && (s.draft.fullName.trim() || s.draft.passportNumber.trim())
+    );
     if (readyScans.length === 0) {
       toast("No completed visa extractions to import", "error");
       return;
     }
 
-    const allDrafts = readyScans.map((s) => ({
-      fullName: s.draft.fullName.trim(),
+    const allDrafts = readyScans.map((s, idx) => ({
+      fullName: s.draft.fullName.trim() || `Passenger ${idx + 1} (${s.draft.passportNumber.trim() || "Visa"})`,
       passportNumber: s.draft.passportNumber.trim(),
       nationality: s.draft.nationality.trim(),
       visaType: s.draft.visaType.trim(),
@@ -201,6 +211,7 @@ export function VisaImportButton({ onConfirm, onConfirmMultiple, disabled }: Vis
       }
     }
 
+    toast(`Imported ${allDrafts.length} passenger(s) into form`, "success");
     setOpen(false);
     reset();
   };
@@ -224,9 +235,10 @@ export function VisaImportButton({ onConfirm, onConfirmMultiple, disabled }: Vis
         variant="outline"
         disabled={disabled || anyScanning}
         onClick={() => inputRef.current?.click()}
+        className={className}
       >
         <ScanSearch className="h-4 w-4" />
-        Import from Visa
+        {label}
         {scans.length > 1 && (
           <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">
             {totalConfirmed}/{scans.length}
@@ -416,8 +428,8 @@ export function VisaImportButton({ onConfirm, onConfirmMultiple, disabled }: Vis
                       >
                         <CheckCircle2 className="h-4 w-4 mr-1.5" />
                         {scans.length > 1
-                          ? `Confirm & Fill All (${scans.filter((s) => s.status === "done").length})`
-                          : "Confirm and Fill"}
+                          ? `Confirm & Fill All (${scans.filter((s) => s.status === "done").length}) Passengers`
+                          : "Confirm & Fill Passenger"}
                       </Button>
                     </div>
                   </div>

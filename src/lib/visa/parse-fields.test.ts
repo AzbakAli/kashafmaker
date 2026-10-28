@@ -267,4 +267,30 @@ describe("parseVisaFields", () => {
       expect(result.fullName).not.toContain("The");
     }
   });
+
+  it("extracts passenger fields accurately from MRZ lines", () => {
+    const text = `
+      KINGDOM OF SAUDI ARABIA
+      VISA
+      V<SAUAL<OTAIBI<<MOHAMMED<KHALID<<<<<<<<<<<<<
+      A123456782SAU9001015M2501018<<<<<<<<<<<<<<04
+    `;
+    const result = parseVisaFields({ text, fromOcr: true });
+    expect(result.fullName).toBe("MOHAMMED KHALID AL OTAIBI");
+    expect(result.passportNumber).toBe("A12345678");
+    expect(result.nationality).toBe("Saudi Arabia");
+  });
+
+  it("extracts Arab and international nationalities properly", () => {
+    const cases = [
+      { text: "الاسم محمد علي\nالجنسية سوري\nرقم الجواز N1234567\nنوع التأشيرة عمرة", nationality: "Syria", visaType: "Umrah" },
+      { text: "الاسم احمد يوسف\nالجنسية يمني\nرقم الجواز 01234567\nنوع التأشيرة زيارة سياحة", nationality: "Yemen", visaType: "Tourism Visit" },
+      { text: "الاسم عمر عثمان\nالجنسية سوداني\nرقم الجواز P9876543\nنوع التأشيرة حج", nationality: "Sudan", visaType: "Hajj" },
+    ];
+    for (const c of cases) {
+      const result = parseVisaFields({ text: c.text });
+      expect(result.nationality).toBe(c.nationality);
+      expect(result.visaType).toBe(c.visaType);
+    }
+  });
 });

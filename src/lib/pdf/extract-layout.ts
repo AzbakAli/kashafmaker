@@ -14,7 +14,8 @@ type PdfPage = {
     items: Array<{ str?: string; transform?: number[]; width?: number; height?: number }>;
   }>;
   getOperatorList: () => Promise<{ fnArray: number[]; argsArray: unknown[] }>;
-  objs: { get: (name: string, callback: (value: unknown) => void) => void };
+  objs: { get: (name: string, callback: (value: unknown) => void) => void; has?: (name: string) => boolean };
+  commonObjs?: { get: (name: string, callback: (value: unknown) => void) => void; has?: (name: string) => boolean };
 };
 
 export interface PdfLayout {
@@ -83,9 +84,10 @@ export async function extractPdfEmbeddedImages(data: Uint8Array): Promise<Buffer
     const names = new Set<string>();
     for (let n = 0; n < ops.fnArray.length; n++) {
       const fn = ops.fnArray[n];
-      // pdf.js OPS: paintJpegXObject, paintInlineImageXObject, paintImageXObject, paintImageXObjectRepeat
-      if ((fn === 81 || fn === 82 || fn === 85 || fn === 86) && Array.isArray(ops.argsArray[n])) {
-        names.add(String((ops.argsArray[n] as unknown[])[0]));
+      // pdf.js OPS: paintXObject (66), paintJpegXObject (82), paintImageMaskXObject (83), paintImageXObject (85), paintInlineImageXObject (86), etc.
+      if ((fn === 66 || (fn >= 81 && fn <= 89)) && Array.isArray(ops.argsArray[n])) {
+        const arg0 = (ops.argsArray[n] as unknown[])[0];
+        if (arg0) names.add(String(arg0));
       }
     }
     for (const name of names) {
@@ -117,9 +119,9 @@ export async function extractPdfEmbeddedImages(data: Uint8Array): Promise<Buffer
   return images;
 }
 
-function getObject(page: PdfPage, name: string) {
-  return new Promise<unknown>((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), 2000);
+async function getObject(page: PdfPage, name: string): Promise<unknown> {
+  const fromObjs = await new Promise<unknown>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), 800);
     try {
       page.objs.get(name, (value) => {
         clearTimeout(timer);
@@ -130,4 +132,23 @@ function getObject(page: PdfPage, name: string) {
       resolve(undefined);
     }
   });
+
+  if (fromObjs) return fromObjs;
+
+  if (page.commonObjs?.get) {
+    return new Promise<unknown>((resolve) => {
+      const timer = setTimeout(() => resolve(undefined), 800);
+      try {
+        page.commonObjs!.get(name, (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        });
+      } catch {
+        clearTimeout(timer);
+        resolve(undefined);
+      }
+    });
+  }
+
+  return undefined;
 }

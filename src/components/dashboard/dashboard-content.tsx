@@ -97,10 +97,24 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
       .finally(() => setLoading(false));
   }, [initialData]);
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="flex justify-center py-24">
-        <LoadingSpinner />
+      <div className="space-y-8 animate-pulse">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-700 p-6 sm:p-8 text-white shadow-xl">
+          <div className="h-5 w-44 bg-white/20 rounded-full mb-3" />
+          <div className="h-8 w-72 bg-white/30 rounded-lg mb-2" />
+          <div className="h-4 w-96 max-w-full bg-white/20 rounded" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 rounded-2xl bg-slate-100 border border-slate-200" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 rounded-2xl bg-slate-100 border border-slate-200" />
+          ))}
+        </div>
       </div>
     );
   }

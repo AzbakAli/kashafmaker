@@ -194,7 +194,30 @@ export function RideForm({ rideId, initial }: RideFormProps) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || `Failed to extract from ${file.name}`);
           }
-          const data = await res.json();
+          let data = await res.json();
+          // If scanned PDF produced little or no text, render on client and run OCR
+          if (
+            (data.needsPageRender || (!data.fullName && !data.passportNumber)) &&
+            (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
+          ) {
+            try {
+              const { renderPdfPagesToBlobs } = await import("@/lib/visa/client-render-pdf");
+              const pages = await renderPdfPagesToBlobs(file, 2);
+              for (const page of pages) {
+                const pageFormData = new FormData();
+                pageFormData.append("file", new File([page], "visa-page.png", { type: "image/png" }));
+                const pageRes = await fetch("/api/extract-visa", { method: "POST", body: pageFormData });
+                if (pageRes.ok) {
+                  const ocrData = await pageRes.json();
+                  const { mergeExtractions } = await import("@/lib/visa/parse-fields");
+                  data = mergeExtractions(data, ocrData);
+                  if (data.fullName && data.passportNumber) break;
+                }
+              }
+            } catch {
+              // Keep original extraction if client render fails
+            }
+          }
           return {
             fullName: data.fullName || "",
             passportNumber: data.passportNumber || "",
@@ -219,19 +242,20 @@ export function RideForm({ rideId, initial }: RideFormProps) {
     setCreatingPassengers(true);
 
     try {
-      const createPromises = extractedPassengers.map(async (data) => {
+      const readyPassengers = extractedPassengers.filter((d) => d.fullName.trim() || d.passportNumber.trim());
+      const createPromises = readyPassengers.map(async (data, idx) => {
         const res = await fetch("/api/passengers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            fullName: data.fullName.trim() || "Unknown",
+            fullName: data.fullName.trim() || `Passenger ${idx + 1} (${data.passportNumber.trim() || "Visa"})`,
             passportNumber: data.passportNumber.trim() || undefined,
             nationality: data.nationality.trim() || undefined,
             visaType: data.visaType.trim() || undefined,
           }),
         });
         if (!res.ok) {
-          throw new Error(`Failed to create passenger: ${data.fullName}`);
+          throw new Error(`Failed to create passenger: ${data.fullName || `Passenger ${idx + 1}`}`);
         }
         return res.json();
       });
@@ -372,24 +396,25 @@ export function RideForm({ rideId, initial }: RideFormProps) {
                     className="hidden"
                   />
                   <VisaImportButton
+                    label="Scan Visas (Bulk / Single)"
                     onConfirm={(fields) => {
                       setNewPassenger((current) => applyVisaFieldsToPassengerForm(current, fields));
                       setShowNewPassenger(true);
                     }}
                     onConfirmMultiple={async (passengers) => {
                       try {
-                        const createPromises = passengers.map(async (data) => {
+                        const createPromises = passengers.map(async (data, idx) => {
                           const res = await fetch("/api/passengers", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
-                              fullName: data.fullName.trim() || "Unknown",
+                              fullName: data.fullName.trim() || `Passenger ${idx + 1} (${data.passportNumber.trim() || "Visa"})`,
                               passportNumber: data.passportNumber.trim() || undefined,
                               nationality: data.nationality.trim() || undefined,
                               visaType: data.visaType.trim() || undefined,
                             }),
                           });
-                          if (!res.ok) throw new Error(`Failed to save ${data.fullName}`);
+                          if (!res.ok) throw new Error(`Failed to save ${data.fullName || `Passenger ${idx + 1}`}`);
                           return res.json();
                         });
                         const created = await Promise.all(createPromises);

@@ -18,11 +18,23 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
       /^name$/,
       /^name\s+of\s+(?:the\s+)?(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
       /^full\s+name\s+of\s+(?:the\s+)?(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
+      /^applicant\s*name$/,
+      /^name\s+of\s+applicant$/,
+      /^beneficiary(?:\s*name)?$/,
+      /^given\s*name(?:s)?$/,
+      /^surname$/,
       /^الاسم$/,
       /^اسم$/,
       /^اسم\s+المسافر$/,
       /^اسم\s+المعتمر$/,
       /^اسم\s+صاحب\s+الجواز$/,
+      /^الاسم\s+الكامل$/,
+      /^اسم\s+المستفيد$/,
+      /^اسم\s+الزائر$/,
+      /^اسم\s+الحاج$/,
+      /^اسم\s+حامل\s+التأشيرة$/,
+      /^اسم\s+صاحب\s+التأشيرة$/,
+      /^اسم\s+مقدم\s+الطلب$/,
     ],
   },
   {
@@ -31,18 +43,45 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
       /^passport\s*(no|number|#|num)$/,
       /^passport$/,
       /^p\.?\s*no$/,
+      /^(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)$/,
+      /^passport\s*(?:\/|\s+or\s+)?(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?$/,
       /^رقم\s*جواز(?:\s*السفر)?$/,
       /^رقم\s*الجواز$/,
       /^جواز\s*السفر$/,
+      /^رقم\s*وثيقة(?:\s*السفر)?$/,
+      /^وثيقة\s*السفر$/,
+      /^رقم\s*الوثيقة$/,
     ],
   },
   {
     field: "nationality",
-    patterns: [/^nationality$/, /^nationalite$/, /^nationalité$/, /^الجنسية$/, /^جنسية$/],
+    patterns: [
+      /^nationality$/,
+      /^nationalite$/,
+      /^nationalité$/,
+      /^citizenship$/,
+      /^country\s+of\s+(?:nationality|citizenship)$/,
+      /^الجنسية$/,
+      /^جنسية$/,
+      /^بلد\s*الجنسية$/,
+      /^بلد\s*الإقامة$/,
+      /^بلد\s*الاقامة$/,
+    ],
   },
   {
     field: "visaType",
-    patterns: [/^type\s*of\s*visa$/, /^visa\s*type$/, /^visa\s*class$/, /^نوع\s*التأشيرة$/, /^نوع\s*التاشيرة$/],
+    patterns: [
+      /^type\s*of\s*visa$/,
+      /^visa\s*type$/,
+      /^visa\s*class$/,
+      /^visa\s*category$/,
+      /^نوع\s*التأشيرة$/,
+      /^نوع\s*التاشيرة$/,
+      /^فئة\s*التأشيرة$/,
+      /^الغرض\s*من\s*الزيارة$/,
+      /^نوع\s*الإقامة$/,
+      /^نوع\s*الاقامة$/,
+    ],
   },
 ];
 
@@ -89,28 +128,171 @@ const ARABIC_NATIONALITY: Record<string, string> = {
   فرنسي: "France",
   فرنسية: "France",
   باكستان: "Pakistan",
+  باكستاني: "Pakistan",
+  باكستانية: "Pakistan",
   هندي: "India",
+  هندية: "India",
   الهند: "India",
   بريطاني: "United Kingdom",
+  بريطانية: "United Kingdom",
   البريطانية: "United Kingdom",
   "المملكة المتحدة": "United Kingdom",
   امريكي: "United States",
   أمريكي: "United States",
+  امريكية: "United States",
+  أمريكية: "United States",
   "الولايات المتحدة": "United States",
   مصري: "Egypt",
+  مصرية: "Egypt",
   مصر: "Egypt",
   اردني: "Jordan",
   أردني: "Jordan",
+  اردنية: "Jordan",
+  أردنية: "Jordan",
   الاردن: "Jordan",
+  الأردن: "Jordan",
   تركي: "Turkey",
+  تركية: "Turkey",
   تركيا: "Turkey",
   اندونيسي: "Indonesia",
   إندونيسي: "Indonesia",
+  اندونيسية: "Indonesia",
+  إندونيسية: "Indonesia",
   إندونيسيا: "Indonesia",
+  اندونيسيا: "Indonesia",
   بنغلاديشي: "Bangladesh",
+  بنغلاديشية: "Bangladesh",
   بنغلاديش: "Bangladesh",
   فلبيني: "Philippines",
+  فلبينية: "Philippines",
   الفلبين: "Philippines",
+  سوري: "Syria",
+  سورية: "Syria",
+  سوريا: "Syria",
+  يمني: "Yemen",
+  يمنية: "Yemen",
+  اليمن: "Yemen",
+  سوداني: "Sudan",
+  سودانية: "Sudan",
+  السودان: "Sudan",
+  عراقي: "Iraq",
+  عراقية: "Iraq",
+  العراق: "Iraq",
+  لبناني: "Lebanon",
+  لبنانية: "Lebanon",
+  لبنان: "Lebanon",
+  فلسطيني: "Palestine",
+  فلسطينية: "Palestine",
+  فلسطين: "Palestine",
+  جزائري: "Algeria",
+  جزائرية: "Algeria",
+  الجزائر: "Algeria",
+  مغربي: "Morocco",
+  مغربية: "Morocco",
+  المغرب: "Morocco",
+  تونسي: "Tunisia",
+  تونسية: "Tunisia",
+  تونس: "Tunisia",
+  ليبي: "Libya",
+  ليبية: "Libya",
+  ليبيا: "Libya",
+  كويتي: "Kuwait",
+  كويتية: "Kuwait",
+  الكويت: "Kuwait",
+  قطري: "Qatar",
+  قطرية: "Qatar",
+  قطر: "Qatar",
+  بحريني: "Bahrain",
+  بحرينية: "Bahrain",
+  البحرين: "Bahrain",
+  عماني: "Oman",
+  عمانية: "Oman",
+  عمان: "Oman",
+  عُمان: "Oman",
+  إماراتي: "United Arab Emirates",
+  اماراتي: "United Arab Emirates",
+  إماراتية: "United Arab Emirates",
+  اماراتية: "United Arab Emirates",
+  الإمارات: "United Arab Emirates",
+  الامارات: "United Arab Emirates",
+  سعودي: "Saudi Arabia",
+  سعودية: "Saudi Arabia",
+  "المملكة العربية السعودية": "Saudi Arabia",
+  ماليزي: "Malaysia",
+  ماليزية: "Malaysia",
+  ماليزيا: "Malaysia",
+  روسي: "Russia",
+  روسية: "Russia",
+  روسيا: "Russia",
+  صيني: "China",
+  صينية: "China",
+  الصين: "China",
+  الماني: "Germany",
+  ألماني: "Germany",
+  المانية: "Germany",
+  ألمانية: "Germany",
+  المانيا: "Germany",
+  ألمانيا: "Germany",
+  ايطالي: "Italy",
+  إيطالي: "Italy",
+  ايطالية: "Italy",
+  إيطالية: "Italy",
+  ايطاليا: "Italy",
+  إيطاليا: "Italy",
+  اسباني: "Spain",
+  إسباني: "Spain",
+  اسبانية: "Spain",
+  إسبانية: "Spain",
+  اسبانيا: "Spain",
+  إسبانيا: "Spain",
+  كندي: "Canada",
+  كندية: "Canada",
+  كندا: "Canada",
+  استرالي: "Australia",
+  أسترالي: "Australia",
+  استرالية: "Australia",
+  أسترالية: "Australia",
+  استراليا: "Australia",
+  أستراليا: "Australia",
+  اوزبكي: "Uzbekistan",
+  أوزبكي: "Uzbekistan",
+  اوزبكستان: "Uzbekistan",
+  أوزبكستان: "Uzbekistan",
+  كازاخستاني: "Kazakhstan",
+  كازاخستان: "Kazakhstan",
+  طاجيكي: "Tajikistan",
+  طاجيكستان: "Tajikistan",
+  نيجيري: "Nigeria",
+  نيجيرية: "Nigeria",
+  نيجيريا: "Nigeria",
+  غاني: "Ghana",
+  غانية: "Ghana",
+  غانا: "Ghana",
+  كيني: "Kenya",
+  كينية: "Kenya",
+  كينيا: "Kenya",
+  جنوب_افريقي: "South Africa",
+  "جنوب افريقيا": "South Africa",
+  "جنوب إفريقيا": "South Africa",
+  افغاني: "Afghanistan",
+  أفغاني: "Afghanistan",
+  افغانستان: "Afghanistan",
+  أفغانستان: "Afghanistan",
+  ايراني: "Iran",
+  إيراني: "Iran",
+  ايران: "Iran",
+  إيران: "Iran",
+  صومالي: "Somalia",
+  صومالية: "Somalia",
+  الصومال: "Somalia",
+  اثيوبي: "Ethiopia",
+  إثيوبي: "Ethiopia",
+  اثيوبيا: "Ethiopia",
+  إثيوبيا: "Ethiopia",
+  نيبالي: "Nepal",
+  نيبال: "Nepal",
+  سريلانكي: "Sri Lanka",
+  سريلانكا: "Sri Lanka",
 };
 
 const ARABIC_VISA_TYPE: Record<string, string> = {
@@ -158,6 +340,38 @@ export function parseVisaFields(input: {
   const labeled = extractLabeledValues(textLines);
   const spatial = tokenLines.length ? extractSpatialValues(tokenLines) : {};
   const merged = mergeValues(labeled, spatial);
+
+  // Check for MRZ (Machine Readable Zone) lines at the bottom of the document
+  const mrz = parseMrzFromText(input.text || textLines.join("\n"));
+  if (mrz.passportNumber && !merged.passportNumber?.value) {
+    merged.passportNumber = { value: mrz.passportNumber, labeled: true };
+  }
+  if (mrz.nationality && !merged.nationality?.value) {
+    merged.nationality = { value: mrz.nationality, labeled: true };
+  }
+  if (mrz.fullName && !merged.fullName?.value) {
+    merged.fullName = { value: mrz.fullName, labeled: true };
+  }
+
+  // Fallback visa type if missing from labeled fields
+  if (!merged.visaType?.value) {
+    const fullText = (input.text || textLines.join(" ")).toLowerCase();
+    if (fullText.includes("umrah") || fullText.includes("عمرة")) {
+      merged.visaType = { value: "Umrah", labeled: true };
+    } else if (fullText.includes("hajj") || fullText.includes("حج")) {
+      merged.visaType = { value: "Hajj", labeled: true };
+    } else if (fullText.includes("tourism") || fullText.includes("tourist") || fullText.includes("سياحة")) {
+      merged.visaType = { value: "Tourism Visit", labeled: true };
+    } else if (fullText.includes("family") || fullText.includes("عائلية")) {
+      merged.visaType = { value: "Family Visit", labeled: true };
+    } else if (fullText.includes("business") || fullText.includes("زيارة عمل")) {
+      merged.visaType = { value: "Business Visit", labeled: true };
+    } else if (fullText.includes("transit") || fullText.includes("مرور")) {
+      merged.visaType = { value: "Transit", labeled: true };
+    } else if (fullText.includes("work") || fullText.includes("عمل") || fullText.includes("إقامة") || fullText.includes("اقامة")) {
+      merged.visaType = { value: "Work", labeled: true };
+    }
+  }
 
   const fields: VisaExtractionResult["fields"] = {
     fullName: finalizeName(merged.fullName, fromOcr),
@@ -672,10 +886,101 @@ function passportCandidates(value: string) {
     .toUpperCase()
     .split(/[^A-Z0-9-]+/)
     .filter((token) => {
-      // More flexible passport pattern: 6-16 chars, at least 1 letter and 1 digit
       const clean = token.replace(/-/g, "");
-      return clean.length >= 6 && clean.length <= 16 && /[A-Z]/.test(clean) && /\d/.test(clean);
+      if (clean.length < 6 || clean.length > 16) return false;
+      // Exclude dates like 20261028 or 19900101
+      if (/^(19|20)\d{6}$/.test(clean)) return false;
+      // Allow pure digits (6-12 digits) or alphanumeric (contains both letters and digits or letter code)
+      if (/^\d+$/.test(clean)) {
+        return clean.length >= 6 && clean.length <= 12;
+      }
+      return /^[A-Z0-9]+$/.test(clean) && /[A-Z]/.test(clean);
     });
+}
+
+const ICAO_COUNTRY_CODES: Record<string, string> = {
+  SAU: "Saudi Arabia",
+  GBR: "United Kingdom",
+  USA: "United States",
+  FRA: "France",
+  PAK: "Pakistan",
+  IND: "India",
+  EGY: "Egypt",
+  BGD: "Bangladesh",
+  IDN: "Indonesia",
+  TUR: "Turkey",
+  JOR: "Jordan",
+  SYR: "Syria",
+  IRQ: "Iraq",
+  YEM: "Yemen",
+  LBN: "Lebanon",
+  PSE: "Palestine",
+  DZA: "Algeria",
+  MAR: "Morocco",
+  TUN: "Tunisia",
+  LBY: "Libya",
+  KWT: "Kuwait",
+  QAT: "Qatar",
+  BHR: "Bahrain",
+  OMN: "Oman",
+  ARE: "United Arab Emirates",
+  MYS: "Malaysia",
+  PHL: "Philippines",
+  RUS: "Russia",
+  CHN: "China",
+  DEU: "Germany",
+  ITA: "Italy",
+  ESP: "Spain",
+  CAN: "Canada",
+  AUS: "Australia",
+  UZB: "Uzbekistan",
+  KAZ: "Kazakhstan",
+  TJK: "Tajikistan",
+  NGA: "Nigeria",
+  GHA: "Ghana",
+  KEN: "Kenya",
+  ZAF: "South Africa",
+  AFG: "Afghanistan",
+  IRN: "Iran",
+  SDN: "Sudan",
+  SOM: "Somalia",
+  ETH: "Ethiopia",
+  NPL: "Nepal",
+  LKA: "Sri Lanka",
+};
+
+export function parseMrzFromText(text: string): { fullName?: string; passportNumber?: string; nationality?: string } {
+  if (!text) return {};
+  const rawLines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/[^A-Za-z0-9<]/g, "").toUpperCase())
+    .filter((l) => l.length >= 28);
+
+  for (let i = 0; i < rawLines.length - 1; i++) {
+    const l1 = rawLines[i];
+    const l2 = rawLines[i + 1];
+
+    if (/^[VIPAC<]/.test(l1) && l1.includes("<<")) {
+      const afterState = l1.length >= 5 ? l1.slice(5) : l1;
+      const cleanNamePart = afterState.replace(/<+$/, "");
+      const [surnameRaw, givenRaw] = cleanNamePart.split("<<");
+      const surname = (surnameRaw || "").replace(/</g, " ").trim();
+      const given = (givenRaw || "").replace(/</g, " ").trim();
+      const fullName = [given, surname].filter(Boolean).join(" ").trim();
+
+      const docRaw = l2.slice(0, 9).replace(/<+/g, "").trim();
+      const natRaw = l2.length >= 13 ? l2.slice(10, 13).replace(/<+/g, "").trim() : "";
+      const nationality = ICAO_COUNTRY_CODES[natRaw] || (natRaw.length === 3 ? natRaw : undefined);
+
+      return {
+        fullName: fullName || undefined,
+        passportNumber: docRaw.length >= 6 ? docRaw : undefined,
+        nationality,
+      };
+    }
+  }
+
+  return {};
 }
 
 function unique(items: string[]) {
