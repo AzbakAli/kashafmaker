@@ -1,0 +1,192 @@
+import type { VisaExtractionResult, VisaFieldKey, FieldResult } from "./types";
+
+interface AiVisaPayload {
+  fullName?: string;
+  passportNumber?: string;
+  nationality?: string;
+  visaType?: string;
+}
+
+const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
+
+export async function aiExtractVisa(input: {
+  buffer: Uint8Array;
+  mimeType?: string;
+  fileName?: string;
+}): Promise<VisaExtractionResult | null> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    let mimeType = (input.mimeType || "").toLowerCase();
+    let imageBuffer = Buffer.from(input.buffer);
+
+    // Determine correct MIME type
+    if (!mimeType || mimeType === "application/octet-stream") {
+      const ext = (input.fileName?.split(".").pop() || "").toLowerCase();
+      if (ext === "pdf") mimeType = "application/pdf";
+      else if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
+      else if (ext === "webp") mimeType = "image/webp";
+      else mimeType = "image/png";
+    }
+
+    // For images, preprocess with sharp to autorotate, flatten white, and convert unsupported formats
+    if (mimeType.startsWith("image/")) {
+      try {
+        const sharp = (await import("sharp")).default;
+        imageBuffer = await sharp(imageBuffer)
+          .rotate()
+          .flatten({ background: "#ffffff" })
+          .resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true })
+          .png()
+          .toBuffer();
+        mimeType = "image/png";
+      } catch {
+        // Continue with original buffer if sharp fails
+      }
+    }
+
+    const base64Data = imageBuffer.toString("base64");
+
+    const prompt = `You are an expert immigration document and visa analyzer.
+Analyze this visa, passport, or travel permit document (which may be in English, Arabic, or bilingual, scanned, photographed, or digital).
+Extract the traveler/passenger information into a valid JSON object with exactly these 4 keys:
+
+1. "fullName": The full personal name of the visa holder or passenger in English (e.g. "MOHAMMED KHALID AL-HARBI").
+   - NEVER include label prefixes like "The Name", "thename", "Name:", "Holder:", "Applicant:", "Beneficiary:", or "الاسم".
+   - NEVER include titles like "MR", "MRS", "MS".
+
+2. "passportNumber": The passport number or primary travel document number (e.g. "A12345678", "P98765432").
+   - Do not include Visa Number, Border Number, or Application Number here.
+
+3. "nationality": The traveler's nationality or country of citizenship in standard English (e.g. "Saudi Arabia", "Pakistan", "India", "Egypt", "Indonesia", "United Kingdom", "United States", "Bangladesh", "Turkey", "Jordan", "Syria").
+   - If written in Arabic (like "باكستان" or "مصر" or "المملكة العربية السعودية"), convert to standard English country name.
+
+4. "visaType": The primary type of visa or purpose of visit (e.g. "Umrah", "Hajj", "Tourism Visit", "Family Visit", "Business Visit", "Work", "Transit", "Personal Visit").
+   - CRITICAL: Do NOT include sponsor names, company names, or Umrah office names (e.g. if the document says "Umrah" and "Umrah Office: Holy Journey", return ONLY "Umrah").
+
+If any field is missing or cannot be found from the document, set its value to an empty string "".`;
+
+    let payload: AiVisaPayload | null = null;
+
+    for (const model of GEMINI_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 18000);
+
+        const response = await fetch(url, {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  { inline_data: { mime_type: mimeType, data: base64Data } },
+                ],
+              },
+            ],
+            generationConfig: {
+              response_mime_type: "application/json",
+              temperature: 0.1,
+            },
+          }),
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const data = await response.json();
+        const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawJsonText) {
+          payload = JSON.parse(rawJsonText);
+          if (payload && (payload.fullName || payload.passportNumber)) {
+            break;
+          }
+        }
+      } catch {
+        // Try next model if this one times out or errors
+      }
+    }
+
+    if (!payload || (!payload.fullName && !payload.passportNumber)) {
+      return null;
+    }
+
+    // Clean any accidental "the" or "thename" prefixes from AI output
+    let fullName = (payload.fullName || "").trim();
+    fullName = fullName
+      .replace(/^(?:the\s*name|thename|the|name)\b\s*[:.\-]?\s*/gi, "")
+      .replace(/\s+\bthe\b$/gi, "")
+      .trim();
+
+    let passportNumber = (payload.passportNumber || "").trim().toUpperCase();
+    passportNumber = passportNumber.replace(/[^A-Z0-9-]/g, "");
+
+    let nationality = (payload.nationality || "").trim();
+    let visaType = (payload.visaType || "").trim();
+
+    // Standardize visaType
+    const lowerVisa = visaType.toLowerCase();
+    if (lowerVisa.includes("umrah") || lowerVisa.includes("عمرة")) {
+      visaType = "Umrah";
+    } else if (lowerVisa.includes("hajj") || lowerVisa.includes("حج")) {
+      visaType = "Hajj";
+    } else if (lowerVisa.includes("touris") || lowerVisa.includes("سياح")) {
+      visaType = "Tourism Visit";
+    } else if (lowerVisa.includes("family") || lowerVisa.includes("عائلي")) {
+      visaType = "Family Visit";
+    } else if (lowerVisa.includes("business") || lowerVisa.includes("عمل") || lowerVisa.includes("تجاري")) {
+      visaType = "Business Visit";
+    } else if (lowerVisa.includes("transit") || lowerVisa.includes("مرور")) {
+      visaType = "Transit";
+    }
+
+    const fields: Record<VisaFieldKey, FieldResult> = {
+      fullName: {
+        value: fullName,
+        status: fullName ? "ok" : "missing",
+        labeled: Boolean(fullName),
+      },
+      passportNumber: {
+        value: passportNumber,
+        status: passportNumber ? "ok" : "missing",
+        labeled: Boolean(passportNumber),
+      },
+      nationality: {
+        value: nationality,
+        status: nationality ? "ok" : "missing",
+        labeled: Boolean(nationality),
+      },
+      visaType: {
+        value: visaType,
+        status: visaType ? "ok" : "missing",
+        labeled: Boolean(visaType),
+      },
+    };
+
+    const warnings: string[] = [];
+    if (!fullName) warnings.push("Full name was not extracted.");
+    if (!passportNumber) warnings.push("Passport number was not extracted.");
+    if (!nationality) warnings.push("Nationality was not extracted.");
+    if (!visaType) warnings.push("Visa type was not extracted.");
+
+    return {
+      fullName,
+      passportNumber,
+      nationality,
+      visaType,
+      fields,
+      method: "ai_vision",
+      warnings,
+      needsPageRender: false,
+    };
+  } catch {
+    return null;
+  }
+}

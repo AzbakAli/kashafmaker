@@ -3,6 +3,7 @@ import { emptyExtraction, type LayoutToken, type VisaExtractionResult } from "./
 import { validateVisaFile } from "./file-kind";
 import { ocrImages } from "./ocr";
 import { isExtractionComplete, isExtractionUseful, mergeExtractions, parseVisaFields } from "./parse-fields";
+import { aiExtractVisa } from "./ai-vision";
 
 export interface ExtractVisaInput {
   buffer: Uint8Array;
@@ -16,6 +17,41 @@ export async function extractVisaInformation(input: ExtractVisaInput): Promise<V
     throw Object.assign(new Error(validation.error), { status: 400 });
   }
 
+  // 1. If PDF has selectable text, try fast native text extraction (instant ~50ms)
+  if (validation.kind === "pdf") {
+    try {
+      const layout = await extractPdfLayout(input.buffer);
+      if (layout.text.trim()) {
+        const textResult = parseVisaFields({ text: layout.text, tokens: layout.tokens, fromOcr: false, method: "pdf_text" });
+        if (isExtractionComplete(textResult)) {
+          return { ...textResult, needsPageRender: false };
+        }
+      }
+    } catch {
+      // Fall through to AI Vision / OCR
+    }
+  }
+
+  // 2. High-Accuracy AI Vision extraction (handles phone camera photos, screenshots, scanned PDFs)
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const aiResult = await aiExtractVisa({
+        buffer: input.buffer,
+        mimeType: input.mimeType,
+        fileName: input.fileName,
+      });
+      if (aiResult && isExtractionComplete(aiResult)) {
+        return aiResult;
+      }
+      if (aiResult && (aiResult.fullName || aiResult.passportNumber)) {
+        return aiResult;
+      }
+    } catch {
+      // Fall through to local OCR
+    }
+  }
+
+  // 3. Fallback to local PDF / OCR processing
   if (validation.kind === "pdf") {
     return extractFromPdf(input.buffer);
   }

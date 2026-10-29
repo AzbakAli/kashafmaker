@@ -2,7 +2,7 @@ export type VisaFieldKey = "fullName" | "passportNumber" | "nationality" | "visa
 
 export type FieldStatus = "ok" | "needs_review" | "missing";
 
-export type ExtractionMethod = "pdf_text" | "ocr" | "hybrid";
+export type ExtractionMethod = "pdf_text" | "ocr" | "hybrid" | "ai_vision";
 
 export interface LayoutToken {
   text: string;

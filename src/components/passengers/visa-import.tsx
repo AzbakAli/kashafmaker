@@ -486,6 +486,7 @@ function isImageFile(file: File) {
 }
 
 function methodLabel(method: VisaExtractionResult["method"]) {
+  if (method === "ai_vision") return "AI Vision";
   if (method === "pdf_text") return "PDF text";
   if (method === "hybrid") return "PDF text plus OCR";
   return "OCR";
