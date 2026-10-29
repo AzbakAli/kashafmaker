@@ -12,17 +12,19 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
   {
     field: "fullName",
     patterns: [
-      /^full\s*name$/,
-      /^holder\s*name$/,
-      /^passenger\s*name$/,
-      /^name$/,
-      /^name\s+of\s+(?:the\s+)?(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
-      /^full\s+name\s+of\s+(?:the\s+)?(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
-      /^applicant\s*name$/,
-      /^name\s+of\s+applicant$/,
-      /^beneficiary(?:\s*name)?$/,
-      /^given\s*name(?:s)?$/,
-      /^surname$/,
+      /^(?:the\s*)?full\s*name$/,
+      /^(?:the\s*)?holder\s*name$/,
+      /^(?:the\s*)?passenger\s*name$/,
+      /^(?:the\s*)?name$/,
+      /^the\s*name$/,
+      /^thename$/,
+      /^(?:the\s*)?name\s+of\s+(?:the\s*)?(?:visa\s*holder|passport\s*holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
+      /^(?:the\s*)?full\s+name\s+of\s+(?:the\s*)?(?:visa\s*holder|passport\s*holder|passenger|holder|applicant|pilgrim|person|traveler)$/,
+      /^(?:the\s*)?applicant\s*name$/,
+      /^(?:the\s*)?name\s+of\s+applicant$/,
+      /^(?:the\s*)?beneficiary(?:\s*name)?$/,
+      /^(?:the\s*)?given\s*name(?:s)?$/,
+      /^(?:the\s*)?surname$/,
       /^الاسم$/,
       /^اسم$/,
       /^اسم\s+المسافر$/,
@@ -32,26 +34,27 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
       /^اسم\s+المستفيد$/,
       /^اسم\s+الزائر$/,
       /^اسم\s+الحاج$/,
-      /^اسم\s+حامل\s+التأشيرة$/,
-      /^اسم\s+صاحب\s+التأشيرة$/,
+      /^اسم\s+حامل\s+ال[تت]أشير[ةه]$/,
+      /^اسم\s+صاحب\s+ال[تت]أشير[ةه]$/,
       /^اسم\s+مقدم\s+الطلب$/,
     ],
   },
   {
     field: "passportNumber",
     patterns: [
-      /^passport\s*(no|number|#|num)?$/,
+      /^passport\s*(?:no|number|#|num)?\.?$/,
       /^passport$/,
-      /^p\.?\s*no$/,
-      /^passp?o?r?t?\s*(no|number|#|num)?$/,
-      /^(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?$/,
-      /^passport\s*(?:\/|\s+or\s+)?(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?$/,
+      /^p\.?\s*no\.?$/,
+      /^passp?o?r?t?\s*(?:no|number|#|num)?\.?$/,
+      /^(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?\.?$/,
+      /^passport\s*(?:\/|\s+or\s+)?(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?\.?$/,
       /^رقم\s*جواز(?:\s*السفر)?$/,
       /^رقم\s*الجواز$/,
       /^جواز\s*السفر$/,
       /^رقم\s*وثيق[ةه](?:\s*السفر)?$/,
       /^وثيق[ةه]\s*السفر$/,
       /^رقم\s*الوثيق[ةه]$/,
+      /^وثيقة\s*السفر$/,
     ],
   },
   {
@@ -95,7 +98,32 @@ const STOP_LABELS: Array<{ id: string; patterns: RegExp[] }> = [
   { id: "birth_date", patterns: [/^birth\s*date$/, /^date\s*of\s*birth$/, /^dob$/, /^تاريخ\s*الميلاد$/] },
   { id: "gender", patterns: [/^gender$/, /^sex$/, /^الجنس$/] },
   { id: "country_of_birth", patterns: [/^country\s*of\s*birth$/] },
-  { id: "sponsor", patterns: [/^(?:the\s+)?sponsor$/, /^(?:the\s+)?carrier$/, /^(?:the\s+)?company$/, /^(?:the\s+)?employer$/, /^الكفيل$/, /^جه[ةه]\s*العمل$/, /^صاحب\s*العمل$/, /^الناقل$/, /^المستقدم$/, /^الشرك[ةه]$/] },
+  {
+    id: "sponsor",
+    patterns: [
+      /^(?:the\s+)?sponsor$/,
+      /^(?:the\s+)?carrier$/,
+      /^(?:the\s+)?company$/,
+      /^(?:the\s+)?employer$/,
+      /^(?:the\s+)?(?:umrah\s+)?office$/,
+      /^(?:the\s+)?(?:umrah\s+)?operator$/,
+      /^(?:the\s+)?(?:travel\s+)?agency$/,
+      /^(?:the\s+)?(?:external\s+)?agent$/,
+      /^(?:the\s+)?service\s+provider$/,
+      /^الكفيل$/,
+      /^جه[ةه]\s*العمل$/,
+      /^صاحب\s*العمل$/,
+      /^الناقل$/,
+      /^المستقدم$/,
+      /^الشرك[ةه]$/,
+      /^مكتب(?:\s*العمر[ةه])?$/,
+      /^المكتب$/,
+      /^مشغل(?:\s*العمر[ةه])?$/,
+      /^وكال[ةه](?:\s*السفر)?$/,
+      /^الوكيل(?:\s*الخارجي)?$/,
+      /^مزود\s*الخدم[ةه]$/,
+    ],
+  },
   { id: "purpose", patterns: [/^(?:the\s+)?purpose(?:\s+of\s+visit)?$/, /^الغرض$/] },
   { id: "applicant", patterns: [/^(?:the\s+)?applicant$/, /^مقدم\s*الطلب$/] },
   { id: "port_of_entry", patterns: [/^(?:the\s+)?port\s*of\s*entry$/, /^(?:the\s+)?port$/, /^جه[ةه]\s*القدوم$/, /^المنفذ$/] },
@@ -474,11 +502,17 @@ function extractLabeledValues(lines: string[]) {
       const until = nextDifferentFieldStart(hits, h);
       let value = cleanCapturedValue(line.slice(hit.end, until), hit.field);
       if (!value) {
-        const nextLine = lines[i + 1];
-        if (nextLine && !lineStartsWithOtherField(nextLine, hit.field)) {
+        for (let offset = 1; offset <= 2; offset++) {
+          const nextLine = lines[i + offset];
+          if (!nextLine) continue;
+          if (lineStartsWithOtherField(nextLine, hit.field)) break;
           const nextHits = findLabels(nextLine);
           const nextUntil = nextDifferentFieldStart(nextHits, -1, hit.field);
-          value = cleanCapturedValue(nextLine.slice(0, nextUntil), hit.field);
+          const candidate = cleanCapturedValue(nextLine.slice(0, nextUntil), hit.field);
+          if (candidate) {
+            value = candidate;
+            break;
+          }
         }
       }
       if (value) found[hit.field] = { value, labeled: true };
@@ -535,6 +569,11 @@ function finalizeName(hit: { value: string; labeled: true } | undefined, fromOcr
   if (!hit?.value) return missing("Could not find a Name field.");
   let value = preferEnglishValue(hit.value);
   value = stripNameNoise(value);
+  // Guarantee no leading "the " or "thename " or trailing " the" survives into the final name
+  value = value
+    .replace(/^(?:the\s*name|thename|the)\b\s*/gi, "")
+    .replace(/\s+\bthe\b$/gi, "")
+    .trim();
   if (!value) return missing("The Name field was empty.");
   if (isBlockedName(value)) {
     return {
@@ -631,11 +670,29 @@ function finalizeVisaType(hit: { value: string; labeled: true } | undefined, fro
     const arabic = collapseSpaces((hit.value.match(arabicRuns()) || []).join(" "));
     if (ARABIC_VISA_TYPE[arabic]) value = ARABIC_VISA_TYPE[arabic];
   }
-  // Strip trailing text like operator or agency that comes after the visa type (do not strip tourism)
+  // Strip trailing text like operator, office, agency, sponsor that comes after the visa type
   value = value
-    .replace(/\b(tour\s*operator|travel\s*agency|umrah\s*operator|agency|company|service\s*provider)\b.*$/i, "")
+    .replace(/\b(umrah\s*office|office|tour\s*operator|travel\s*agency|umrah\s*operator|operator|agency|company|service\s*provider|external\s*agent|agent|sponsor|holy\s*journey)\b.*$/i, "")
     .replace(/\s*\([^)]*\)\s*$/g, "")
     .trim();
+
+  // If the extracted value contains a primary visa category, normalize to clean title
+  const lower = value.toLowerCase();
+  if (lower.startsWith("umrah") || lower.includes("عمرة")) {
+    value = "Umrah";
+  } else if (lower.startsWith("hajj") || lower.includes("حج")) {
+    value = "Hajj";
+  } else if (lower.includes("touris") || lower.includes("سياح")) {
+    value = "Tourism Visit";
+  } else if (lower.includes("family") || lower.includes("عائلي")) {
+    value = "Family Visit";
+  } else if (lower.includes("business") || lower.includes("زيارة عمل") || lower.includes("تجارية")) {
+    value = "Business Visit";
+  } else if (lower.includes("transit") || lower.includes("مرور")) {
+    value = "Transit";
+  } else if (lower.includes("work") || lower.includes("إقامة") || lower.includes("اقامة")) {
+    value = "Work";
+  }
   if (ENTRY_TYPE_VALUES.has(value.toLowerCase())) {
     return {
       value: "",
@@ -772,10 +829,16 @@ function normalizeLabel(value: string) {
 
 function stripNameNoise(value: string): string {
   let cleaned = value
-    // Remove leading "Name of the ...", "Name of ...", "The ...", etc.
-    .replace(/^(?:name\s+of\s+)?(?:of\s+)?the\s+(?:visa\s+holder|passport\s+holder|passenger|holder|applicant|pilgrim|person|traveler)?\s*[:.\-]?\s*/gi, "")
+    // Remove leading "Name of the ...", "Name of ...", "The ...", "thename", "the name", etc.
+    .replace(/^(?:the\s*)?(?:full\s*)?name\s*(?:of\s*(?:the\s*)?)?(?:visa\s*holder|passport\s*holder|passenger|holder|applicant|pilgrim|person|traveler)?\s*[:.\-]?\s*/gi, "")
+    .replace(/^thename\s*[:.\-]?\s*/gi, "")
+    .replace(/^the\s+/gi, "")
+    .replace(/\s+the$/gi, "")
     // Remove trailing stop words like "the sponsor ...", "the carrier ...", "the company ...", etc.
-    .replace(/\s+\b(?:the|of\s+the)\s+(?:sponsor|carrier|company|employer|applicant|purpose|mahram|port|operator|agency|service|relationship|border|embassy|consulate|pilgrim|nationality|passport|visa)\b.*$/gi, "")
+    .replace(/\s+\b(?:the|of\s+the)\s+(?:sponsor|carrier|company|employer|applicant|purpose|mahram|port|operator|agency|service|relationship|border|embassy|consulate|pilgrim|nationality|passport|visa|name)\b.*$/gi, "")
+    // Remove standalone "the name" or "thename" anywhere in the name
+    .replace(/\bthe\s*name\b/gi, "")
+    .replace(/\bthename\b/gi, "")
     // Remove any remaining whole word "the" or "of the" from name
     .replace(/\b(?:of\s+)?the\b/gi, "")
     .replace(/[|:;]+$/g, "");
@@ -992,27 +1055,32 @@ export function parseMrzFromText(text: string): { fullName?: string; passportNum
     .map((l) => l.replace(/[^A-Za-z0-9<]/g, "").toUpperCase())
     .filter((l) => l.length >= 26);
 
-  for (let i = 0; i < rawLines.length - 1; i++) {
+  for (let i = 0; i < rawLines.length; i++) {
     const l1 = rawLines[i];
-    const l2 = rawLines[i + 1];
-
     if (/^[VIPAC<]/.test(l1) && l1.includes("<<")) {
-      const afterState = l1.length >= 5 ? l1.slice(5) : l1;
-      const cleanNamePart = afterState.replace(/<+$/, "");
-      const [surnameRaw, givenRaw] = cleanNamePart.split("<<");
-      const surname = (surnameRaw || "").replace(/</g, " ").trim();
-      const given = (givenRaw || "").replace(/</g, " ").trim();
-      const fullName = [given, surname].filter(Boolean).join(" ").trim();
+      for (let j = i + 1; j <= Math.min(rawLines.length - 1, i + 2); j++) {
+        const l2 = rawLines[j];
+        if (l2.length >= 26) {
+          const afterState = l1.length >= 5 ? l1.slice(5) : l1;
+          const cleanNamePart = afterState.replace(/<+$/, "");
+          const [surnameRaw, givenRaw] = cleanNamePart.split("<<");
+          const surname = (surnameRaw || "").replace(/</g, " ").trim();
+          const given = (givenRaw || "").replace(/</g, " ").trim();
+          const fullName = [given, surname].filter(Boolean).join(" ").trim();
 
-      const docRaw = l2.slice(0, 9).replace(/<+/g, "").trim();
-      const natRaw = l2.length >= 13 ? l2.slice(10, 13).replace(/<+/g, "").trim() : "";
-      const nationality = ICAO_COUNTRY_CODES[natRaw] || (natRaw.length === 3 ? natRaw : undefined);
+          const docRaw = l2.slice(0, 9).replace(/<+/g, "").trim();
+          const natRaw = l2.length >= 13 ? l2.slice(10, 13).replace(/<+/g, "").trim() : "";
+          const nationality = ICAO_COUNTRY_CODES[natRaw] || (natRaw.length === 3 ? natRaw : undefined);
 
-      return {
-        fullName: fullName || undefined,
-        passportNumber: docRaw.length >= 6 ? docRaw : undefined,
-        nationality,
-      };
+          if (fullName || docRaw.length >= 6) {
+            return {
+              fullName: fullName || undefined,
+              passportNumber: docRaw.length >= 6 ? docRaw : undefined,
+              nationality,
+            };
+          }
+        }
+      }
     }
   }
 

@@ -293,4 +293,33 @@ describe("parseVisaFields", () => {
       expect(result.visaType).toBe(c.visaType);
     }
   });
+
+  it("does not leak Umrah Office or company names into visa type", () => {
+    const text = `
+      Type of Visa: Umrah
+      Umrah Office: Holy Journey
+      The Name: AHMAD HASSAN
+      Passport No: K12345678
+      Nationality: Pakistan
+    `;
+    const result = parseVisaFields({ text });
+    expect(result.visaType).toBe("Umrah");
+    expect(result.fullName).toBe("AHMAD HASSAN");
+    expect(result.fullName).not.toContain("The");
+    expect(result.fullName).not.toContain("the");
+    expect(result.passportNumber).toBe("K12345678");
+  });
+
+  it("handles thename label and strips the prefix", () => {
+    const text = `
+      thename: MOHAMMED ALI
+      Passport Number: B9876543
+      Nationality: Egypt
+      Visa Class: Umrah
+      Office: Holy Journey
+    `;
+    const result = parseVisaFields({ text });
+    expect(result.fullName).toBe("MOHAMMED ALI");
+    expect(result.visaType).toBe("Umrah");
+  });
 });

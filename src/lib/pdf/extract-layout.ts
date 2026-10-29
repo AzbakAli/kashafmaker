@@ -1,7 +1,6 @@
 import { loadPdfJs } from "./extract-text";
 import type { LayoutToken } from "@/lib/visa/types";
 import { encodePng, pixelsToRgba, preprocessRgbaToPng } from "@/lib/visa/image-utils";
-
 type PdfImage = {
   data?: Uint8Array;
   width?: number;
@@ -102,19 +101,28 @@ export async function extractPdfEmbeddedImages(data: Uint8Array): Promise<Buffer
       if (!img?.data || !img.width || !img.height) continue;
       if (img.width < 80 || img.height < 80) continue;
       try {
+        const sharp = (await import("sharp")).default;
         const { width, height, rgba } = pixelsToRgba({
           data: img.data,
           width: img.width,
           height: img.height,
         });
-        images.push(preprocessRgbaToPng(width, height, rgba));
+        const buf = await sharp(Buffer.from(rgba), { raw: { width, height, channels: 4 } })
+          .resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true })
+          .grayscale()
+          .normalize()
+          .png()
+          .toBuffer();
+        if (buf.length > 0) images.push(buf);
       } catch {
         try {
-          images.push(encodePng(img.width, img.height, pixelsToRgba({
+          const { width, height, rgba } = pixelsToRgba({
             data: img.data,
             width: img.width,
             height: img.height,
-          }).rgba));
+          });
+          const fallback = preprocessRgbaToPng(width, height, rgba);
+          if (fallback.length > 0) images.push(fallback);
         } catch {
           // Skip undecodable embedded images.
         }
@@ -162,78 +170,162 @@ async function getObject(page: PdfPage, name: string): Promise<unknown> {
 
 async function extractDirectPdfImages(data: Uint8Array): Promise<Buffer[]> {
   try {
-    const { PDFDocument, PDFName } = await import("pdf-lib");
+    const { PDFDocument, PDFName, PDFArray } = await import("pdf-lib");
     const sharp = (await import("sharp")).default;
+    const { inflateSync } = await import("node:zlib");
     const doc = await PDFDocument.load(data, { ignoreEncryption: true });
     const images: Buffer[] = [];
-    const maxDimension = 2200;
+    const maxDimension = 2400;
 
     for (const [, obj] of doc.context.enumerateIndirectObjects()) {
-      if (obj && "dict" in obj && obj.dict) {
-        const dict = (obj as unknown as { dict: { get: (name: unknown) => { toString: () => string } | undefined } }).dict;
-        const subtype = dict.get(PDFName.of("Subtype"))?.toString();
-        const contents = (obj as unknown as { contents?: Uint8Array }).contents;
+      if (!(obj && "dict" in obj && obj.dict)) continue;
 
-        if (subtype === "/Image" && contents && contents.length > 500) {
-          const filter = dict.get(PDFName.of("Filter"))?.toString();
-          const w = Number(dict.get(PDFName.of("Width"))?.toString()) || 0;
-          const h = Number(dict.get(PDFName.of("Height"))?.toString()) || 0;
+      const dict = (obj as unknown as {
+        dict: { get: (name: unknown) => unknown };
+      }).dict;
 
-          // Skip tiny icons, stamps, or bullets (< 100px)
-          if (w > 0 && h > 0 && (w < 100 || h < 100)) continue;
+      const subtype = (dict.get(PDFName.of("Subtype")) as { toString: () => string } | undefined)?.toString();
+      const contents = (obj as unknown as { contents?: Uint8Array }).contents;
 
+      if (subtype !== "/Image" || !contents || contents.length < 200) continue;
+
+      const w = Number((dict.get(PDFName.of("Width")) as { toString: () => string } | undefined)?.toString()) || 0;
+      const h = Number((dict.get(PDFName.of("Height")) as { toString: () => string } | undefined)?.toString()) || 0;
+
+      // Skip tiny icons/stamps/bullets under 80px — but allow images without declared dimensions
+      if (w > 0 && h > 0 && (w < 80 || h < 80)) continue;
+
+      // Resolve filter — can be a PDFName or a PDFArray of names
+      const filterObj = dict.get(PDFName.of("Filter"));
+      let filter = "";
+      if (filterObj) {
+        const filterStr = (filterObj as { toString: () => string }).toString();
+        // If it's an array like [/ASCII85Decode /DCTDecode], grab the last meaningful filter
+        if (filterStr.startsWith("[")) {
+          // extract all filter names
+          const parts = filterStr.replace(/[\[\]]/g, "").trim().split(/\s+/);
+          filter = parts[parts.length - 1] || "";
+        } else {
+          filter = filterStr;
+        }
+      }
+
+      try {
+        // JPEG / DCTDecode
+        if (
+          filter === "/DCTDecode" ||
+          filter === "DCTDecode" ||
+          (!filter && contents.length > 2 && contents[0] === 0xff && contents[1] === 0xd8)
+        ) {
+          const buf = await sharp(Buffer.from(contents))
+            .rotate()
+            .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+            .grayscale()
+            .normalize()
+            .png()
+            .toBuffer();
+          if (buf.length > 0) images.push(buf);
+
+        // JPEG2000 / JPXDecode — try sharp directly
+        } else if (filter === "/JPXDecode" || filter === "JPXDecode") {
+          const buf = await sharp(Buffer.from(contents))
+            .rotate()
+            .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+            .grayscale()
+            .normalize()
+            .png()
+            .toBuffer();
+          if (buf.length > 0) images.push(buf);
+
+        // FlateDecode — zlib-compressed raw pixels
+        } else if (filter === "/FlateDecode" || filter === "FlateDecode") {
           try {
-            if (filter === "/DCTDecode" || (!filter && contents[0] === 0xff && contents[1] === 0xd8)) {
-              // Direct JPEG stream!
-              const buf = await sharp(Buffer.from(contents))
-                .rotate()
+            const uncompressed = inflateSync(Buffer.from(contents));
+            if (w > 0 && h > 0 && uncompressed.length >= w * h) {
+              const channels: 1 | 2 | 3 | 4 =
+                uncompressed.length >= w * h * 4 ? 4 :
+                uncompressed.length >= w * h * 3 ? 3 : 1;
+              const raw = uncompressed.subarray(0, w * h * channels);
+              const buf = await sharp(raw, { raw: { width: w, height: h, channels } })
                 .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
                 .grayscale()
                 .normalize()
                 .png()
                 .toBuffer();
-              images.push(buf);
-            } else if (filter === "/FlateDecode") {
-              const { inflateSync } = await import("node:zlib");
-              try {
-                const uncompressed = inflateSync(Buffer.from(contents));
-                if (w > 0 && h > 0) {
-                  const channels = uncompressed.length >= w * h * 4 ? 4 : uncompressed.length >= w * h * 3 ? 3 : 1;
-                  const buf = await sharp(uncompressed.subarray(0, w * h * channels), {
-                    raw: { width: w, height: h, channels },
-                  })
-                    .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
-                    .grayscale()
-                    .normalize()
-                    .png()
-                    .toBuffer();
-                  images.push(buf);
+              if (buf.length > 0) images.push(buf);
+            } else {
+              // might be PNG or another self-describing format after inflate
+              const buf = await sharp(Buffer.from(uncompressed))
+                .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+                .grayscale()
+                .normalize()
+                .png()
+                .toBuffer();
+              if (buf.length > 0) images.push(buf);
+            }
+          } catch {
+            // inflate failed — try as-is
+            try {
+              const buf = await sharp(Buffer.from(contents))
+                .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+                .grayscale()
+                .normalize()
+                .png()
+                .toBuffer();
+              if (buf.length > 0) images.push(buf);
+            } catch { /* skip */ }
+          }
+
+        // CCITTFaxDecode or JBIG2Decode — fax/CCITT black-and-white scanned pages
+        // These cannot be decoded natively without a decoder — try as raw pixels if dimensions known
+        } else if (
+          filter === "/CCITTFaxDecode" || filter === "CCITTFaxDecode" ||
+          filter === "/JBIG2Decode" || filter === "JBIG2Decode"
+        ) {
+          // If we have dimensions, try treating as 1-bit / 8-bit grayscale
+          if (w > 0 && h > 0) {
+            try {
+              // CCITT: 1 bit per pixel, packed bytes
+              const expectedBytes1bpp = Math.ceil(w / 8) * h;
+              const expectedBytes8bpp = w * h;
+              if (contents.length >= expectedBytes1bpp && contents.length < expectedBytes8bpp * 2) {
+                // expand 1bpp to 8bpp
+                const out = new Uint8Array(w * h);
+                for (let y = 0; y < h; y++) {
+                  const rowBytes = Math.ceil(w / 8);
+                  for (let x = 0; x < w; x++) {
+                    const byteIdx = y * rowBytes + Math.floor(x / 8);
+                    const bit = (contents[byteIdx] >> (7 - (x % 8))) & 1;
+                    out[y * w + x] = bit ? 0 : 255; // CCITT: 1=black, 0=white
+                  }
                 }
-              } catch {
-                const buf = await sharp(Buffer.from(contents))
+                const buf = await sharp(Buffer.from(out), { raw: { width: w, height: h, channels: 1 } })
                   .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
-                  .grayscale()
                   .normalize()
                   .png()
                   .toBuffer();
-                images.push(buf);
+                if (buf.length > 0) images.push(buf);
               }
-            } else {
-              const buf = await sharp(Buffer.from(contents))
-                .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
-                .grayscale()
-                .normalize()
-                .png()
-                .toBuffer();
-              images.push(buf);
-            }
-          } catch {
-            // Skip undecodable stream
+            } catch { /* skip */ }
           }
 
-          if (images.length >= 2) return images;
+        // Unknown or no filter — try sharp directly (may be PNG/TIFF/etc embedded)
+        } else {
+          try {
+            const buf = await sharp(Buffer.from(contents))
+              .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+              .grayscale()
+              .normalize()
+              .png()
+              .toBuffer();
+            if (buf.length > 0) images.push(buf);
+          } catch { /* skip */ }
         }
+      } catch {
+        // Skip any image that fails entirely
       }
+
+      if (images.length >= 3) break;
     }
 
     return images;

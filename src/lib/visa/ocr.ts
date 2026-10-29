@@ -69,9 +69,9 @@ async function prepareImage(image: Buffer): Promise<Buffer> {
     const sharp = (await import("sharp")).default;
     return await sharp(image)
       .rotate() // Automatically autorotates phone camera photos based on EXIF
-      .resize({ width: 2200, height: 2200, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" }) // Ensure transparent backgrounds become pure white
+      .resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true })
       .grayscale()
-      .normalize()
       .png()
       .toBuffer();
   } catch {
