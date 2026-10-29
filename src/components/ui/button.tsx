@@ -2,26 +2,27 @@ import { cn } from "@/lib/utils";
 import { ButtonHTMLAttributes, AnchorHTMLAttributes, forwardRef } from "react";
 
 const variants = {
-  primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
-  secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
-  outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm",
-  ghost: "text-slate-600 hover:bg-slate-100",
-  danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
-  success: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
-  warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
+  primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm active:bg-indigo-800",
+  secondary: "bg-slate-100 text-slate-800 hover:bg-slate-200 active:bg-slate-300",
+  outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm active:bg-slate-100",
+  ghost: "text-slate-600 hover:bg-slate-100 active:bg-slate-200",
+  danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm active:bg-red-800",
+  success: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm active:bg-emerald-800",
+  warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm active:bg-amber-700",
 };
 
 const sizes = {
-  sm: "px-3 py-1.5 text-xs",
-  md: "px-4 py-2 text-sm",
-  lg: "px-6 py-3 text-base",
+  xs: "px-2.5 py-1 text-xs rounded-md",
+  sm: "px-3 py-1.5 text-xs rounded-lg",
+  md: "px-4 py-2 text-sm rounded-lg",
+  lg: "px-5 py-2.5 text-sm rounded-lg",
 };
 
 const baseClass =
-  "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  "inline-flex items-center justify-center gap-1.5 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger" | "success" | "warning";
+  variant?: keyof typeof variants;
   size?: keyof typeof sizes;
   href?: string;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];

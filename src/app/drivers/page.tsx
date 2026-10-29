@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/app-layout";
-import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, Modal } from "@/components/ui/card";
+import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, Modal, ConfirmDialog } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -71,15 +71,23 @@ export default function DriversPage() {
     }
   };
 
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const deleteDriver = async (driverId: string) => {
-    if (!window.confirm("Delete this driver? This action cannot be undone.")) return;
-    const res = await fetch(`/api/drivers/${driverId}`, { method: "DELETE" });
-    if (res.ok) {
-      toast("Driver deleted successfully", "success");
-      fetchData();
-    } else {
-      const err = await res.json();
-      toast(err.error || "Failed to delete driver", "error");
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/drivers/${driverId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast("Driver deleted successfully", "success");
+        fetchData();
+      } else {
+        const err = await res.json();
+        toast(err.error || "Failed to delete driver", "error");
+      }
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -190,20 +198,19 @@ export default function DriversPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <Link
                           href={`/drivers/${d.id}`}
-                          className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium text-xs transition-colors"
+                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
                         >
-                          View Details
-                          <ArrowRight className="h-3 w-3 ml-1" />
+                          View <ArrowRight className="h-3 w-3" />
                         </Link>
                         <button
                           type="button"
-                          className="text-red-600 hover:text-red-800 font-medium text-xs transition-colors"
-                          onClick={() => deleteDriver(d.id)}
+                          className="inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                          onClick={() => setDeleteTarget(d.id)}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -274,6 +281,17 @@ export default function DriversPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteDriver(deleteTarget);
+        }}
+        loading={deleting}
+        title="Delete Driver?"
+        message="This will permanently remove the driver profile and vehicle assignment. This cannot be undone."
+      />
     </AppLayout>
   );
 }

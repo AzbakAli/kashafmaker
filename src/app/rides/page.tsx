@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/app-layout";
-import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner } from "@/components/ui/card";
+import {
+  PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, ConfirmDialog, StatusDot,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { Plus, Search, MapPin, Calendar, Users, Car, ArrowRight, FileText, Trash2, Edit } from "lucide-react";
+import {
+  Plus, Search, MapPin, Users, Car, ArrowRight, FileText, Trash2, Edit, Download,
+} from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
@@ -34,12 +38,12 @@ const statusVariant = (status: string) => {
   }
 };
 
-const statusIcon = (status: string) => {
+const statusDot = (status: string): "success" | "info" | "danger" | "warning" => {
   switch (status) {
-    case "COMPLETED": return "✓";
-    case "IN_PROGRESS": return "●";
-    case "CANCELLED": return "✕";
-    default: return "○";
+    case "COMPLETED": return "success";
+    case "IN_PROGRESS": return "info";
+    case "CANCELLED": return "danger";
+    default: return "warning";
   }
 };
 
@@ -50,6 +54,10 @@ export default function RidesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+
+  // Confirm dialog state
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "ride" | "kashaf"; id: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchRides = () => {
     const params = new URLSearchParams();
@@ -63,21 +71,26 @@ export default function RidesPage() {
 
   useEffect(() => { fetchRides(); }, [debouncedSearch, statusFilter]);
 
-  const deleteKashaf = async (documentId: string) => {
-    if (!window.confirm("Delete this Kashaf PDF? This cannot be undone.")) return;
-    const res = await fetch(`/api/documents/${documentId}`, { method: "DELETE" });
-    if (res.ok) fetchRides();
-  };
-
-  const deleteRide = async (rideId: string) => {
-    if (!window.confirm("Delete this ride? This action cannot be undone.")) return;
-    const res = await fetch(`/api/rides/${rideId}`, { method: "DELETE" });
-    if (res.ok) {
-      toast("Ride deleted successfully", "success");
-      fetchRides();
-    } else {
-      const err = await res.json();
-      toast(err.error || "Failed to delete ride", "error");
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      if (confirmDelete.type === "kashaf") {
+        const res = await fetch(`/api/documents/${confirmDelete.id}`, { method: "DELETE" });
+        if (res.ok) { toast("Kashaf PDF deleted", "success"); fetchRides(); }
+      } else {
+        const res = await fetch(`/api/rides/${confirmDelete.id}`, { method: "DELETE" });
+        if (res.ok) {
+          toast("Ride deleted successfully", "success");
+          fetchRides();
+        } else {
+          const err = await res.json();
+          toast(err.error || "Failed to delete ride", "error");
+        }
+      }
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(null);
     }
   };
 
@@ -88,19 +101,20 @@ export default function RidesPage() {
         description="Manage all transport rides and trips"
         action={
           <Link href="/rides/new">
-            <Button className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="h-4 w-4 mr-2" /> Create Ride
+            <Button>
+              <Plus className="h-4 w-4" /> Create Ride
             </Button>
           </Link>
         }
       />
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+      {/* Filters */}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
-            className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
-            placeholder="Search rides by number, pickup, or destination..."
+            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+            placeholder="Search by ride number, pickup, or destination…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -115,23 +129,29 @@ export default function RidesPage() {
             { value: "COMPLETED", label: "Completed" },
             { value: "CANCELLED", label: "Cancelled" },
           ]}
+          className="sm:w-44"
         />
       </div>
 
-      <Card className="shadow-md">
+      <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex justify-center py-12">
+            <div className="flex justify-center py-16">
               <LoadingSpinner />
             </div>
           ) : rides.length === 0 ? (
             <EmptyState
               title="No rides found"
-              description={search || statusFilter ? "Try adjusting your search or filters" : "Create your first ride to get started"}
+              description={
+                search || statusFilter
+                  ? "Try adjusting your search or filters"
+                  : "Create your first ride to get started"
+              }
+              icon={<Car className="h-12 w-12" />}
               action={
                 <Link href="/rides/new">
-                  <Button className="bg-indigo-600 hover:bg-indigo-700">
-                    <Plus className="h-4 w-4 mr-2" /> Create Ride
+                  <Button>
+                    <Plus className="h-4 w-4" /> Create Ride
                   </Button>
                 </Link>
               }
@@ -140,129 +160,167 @@ export default function RidesPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Ride #</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4" /> Date
-                      </div>
+                  <tr className="border-b border-slate-100 bg-slate-50/70">
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Ride #
                     </th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4" /> Route
-                      </div>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Date
                     </th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4" /> Driver
-                      </div>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Route
                     </th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <Car className="h-4 w-4" /> Vehicle
-                      </div>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden md:table-cell">
+                      Driver
                     </th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Passengers</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Kashaf</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden lg:table-cell">
+                      Vehicle
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Pax
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Status
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">
+                      Kashaf
+                    </th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rides.map((ride) => (
-                    <tr key={ride.id} className="border-b border-slate-100 hover:bg-indigo-50/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded">
-                          {ride.rideNumber}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{formatDate(ride.date)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 text-slate-600">
-                          <span className="truncate max-w-[100px]">{ride.pickup}</span>
-                          <ArrowRight className="h-3 w-3 text-slate-400 flex-shrink-0" />
-                          <span className="truncate max-w-[100px]">{ride.destination}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {ride.driver?.name || (
-                          <span className="text-slate-400 italic">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {ride.vehicle ? (
-                          <div className="text-xs">
-                            <div className="font-medium text-slate-900">{ride.vehicle.make} {ride.vehicle.model}</div>
-                            <div className="text-slate-500">{ride.vehicle.plateNumber}</div>
+                <tbody className="divide-y divide-slate-50">
+                  {rides.map((ride) => {
+                    const kashafDoc = ride.kashafDocuments[0];
+                    return (
+                      <tr key={ride.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-md font-semibold">
+                            {ride.rideNumber}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-sm text-slate-600 whitespace-nowrap">
+                          {formatDate(ride.date)}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                            <MapPin className="h-3 w-3 text-slate-300 shrink-0" />
+                            <span className="font-medium truncate max-w-[90px]">{ride.pickup}</span>
+                            <ArrowRight className="h-3 w-3 text-slate-300 shrink-0" />
+                            <span className="truncate max-w-[90px]">{ride.destination}</span>
                           </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Users className="h-3 w-3 text-slate-400" />
-                          <span className="font-medium text-slate-900">{ride._count?.passengers ?? 0}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={statusVariant(ride.status)} className="font-medium">
-                          <span className="mr-1">{statusIcon(ride.status)}</span>
-                          {ride.status.replace("_", " ")}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        {ride.kashafDocuments[0] ? (
-                          <Badge variant="success" className="font-medium">
-                            <FileText className="h-3 w-3 mr-1" /> Generated
+                        </td>
+                        <td className="px-5 py-3.5 hidden md:table-cell">
+                          {ride.driver?.name ? (
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">
+                                {ride.driver.name.charAt(0)}
+                              </div>
+                              <span className="text-xs text-slate-700 font-medium truncate max-w-[100px]">
+                                {ride.driver.name}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 hidden lg:table-cell">
+                          {ride.vehicle ? (
+                            <div>
+                              <p className="text-xs font-medium text-slate-700">
+                                {ride.vehicle.make} {ride.vehicle.model}
+                              </p>
+                              <p className="text-[11px] font-mono text-slate-400">{ride.vehicle.plateNumber}</p>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-1 text-xs font-medium text-slate-700">
+                            <Users className="h-3.5 w-3.5 text-slate-400" />
+                            {ride._count?.passengers ?? 0}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <Badge variant={statusVariant(ride.status)}>
+                            <StatusDot status={statusDot(ride.status)} />
+                            {ride.status.replace("_", " ")}
                           </Badge>
-                        ) : (
-                          <Badge variant="default" className="font-medium">
-                            Pending
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={`/rides/${ride.id}`}
-                            className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium text-xs transition-colors"
-                          >
-                            View Details
-                            <ArrowRight className="h-3 w-3 ml-1" />
-                          </Link>
-                          <Link
-                            href={`/rides/${ride.id}/edit`}
-                            className="inline-flex items-center text-slate-600 hover:text-slate-800 font-medium text-xs transition-colors"
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Link>
-                          {ride.kashafDocuments[0] && (
+                        </td>
+                        <td className="px-5 py-3.5 hidden sm:table-cell">
+                          {kashafDoc ? (
+                            <div className="flex items-center gap-2">
+                              <Badge variant="success">
+                                <FileText className="h-3 w-3" /> Generated
+                              </Badge>
+                              <a
+                                href={`/api/documents/${kashafDoc.id}?download=true`}
+                                className="text-slate-400 hover:text-indigo-600 transition-colors"
+                                title="Download PDF"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                              </a>
+                              <button
+                                type="button"
+                                className="text-slate-300 hover:text-red-500 transition-colors"
+                                title="Delete Kashaf PDF"
+                                onClick={() => setConfirmDelete({ type: "kashaf", id: kashafDoc.id })}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <Badge variant="default">Pending</Badge>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={`/rides/${ride.id}/edit`}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                            >
+                              <Edit className="h-3 w-3" /> Edit
+                            </Link>
+                            <Link
+                              href={`/rides/${ride.id}`}
+                              className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                            >
+                              Open <ArrowRight className="h-3 w-3" />
+                            </Link>
                             <button
                               type="button"
-                              className="text-red-600 hover:text-red-800 font-medium text-xs transition-colors"
-                              onClick={() => deleteKashaf(ride.kashafDocuments[0].id)}
+                              className="inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                              onClick={() => setConfirmDelete({ type: "ride", id: ride.id })}
+                              title="Delete ride"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            className="text-red-600 hover:text-red-800 font-medium text-xs transition-colors"
-                            onClick={() => deleteRide(ride.id)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => !deleting && setConfirmDelete(null)}
+        onConfirm={handleConfirmDelete}
+        loading={deleting}
+        title={confirmDelete?.type === "ride" ? "Delete Ride?" : "Delete Kashaf PDF?"}
+        message={
+          confirmDelete?.type === "ride"
+            ? "This will permanently delete the ride and all associated data. This cannot be undone."
+            : "This will permanently delete the generated Kashaf PDF. You can regenerate it later."
+        }
+      />
     </AppLayout>
   );
 }

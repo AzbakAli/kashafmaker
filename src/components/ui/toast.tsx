@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ToastType = "success" | "error" | "info";
@@ -33,35 +33,48 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const icons = {
-    success: CheckCircle,
-    error: AlertCircle,
-    info: Info,
-  };
-
-  const colors = {
-    success: "bg-emerald-50 border-emerald-200 text-emerald-800",
-    error: "bg-red-50 border-red-200 text-red-800",
-    info: "bg-blue-50 border-blue-200 text-blue-800",
+  const config = {
+    success: {
+      icon: CheckCircle2,
+      classes: "bg-white border-emerald-200 text-slate-800",
+      iconClass: "text-emerald-500",
+      bar: "bg-emerald-500",
+    },
+    error: {
+      icon: AlertCircle,
+      classes: "bg-white border-red-200 text-slate-800",
+      iconClass: "text-red-500",
+      bar: "bg-red-500",
+    },
+    info: {
+      icon: Info,
+      classes: "bg-white border-blue-200 text-slate-800",
+      iconClass: "text-blue-500",
+      bar: "bg-blue-500",
+    },
   };
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2.5 pointer-events-none">
         {toasts.map((t) => {
-          const Icon = icons[t.type];
+          const { icon: Icon, classes, iconClass, bar } = config[t.type];
           return (
             <div
               key={t.id}
               className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg min-w-[280px] animate-in slide-in-from-right",
-                colors[t.type]
+                "flex items-start gap-3 px-4 py-3 rounded-xl border shadow-xl min-w-[300px] max-w-sm pointer-events-auto animate-in slide-in-from-right overflow-hidden relative",
+                classes
               )}
             >
-              <Icon className="h-5 w-5 shrink-0" />
-              <span className="flex-1 text-sm font-medium">{t.message}</span>
-              <button onClick={() => removeToast(t.id)} className="shrink-0 opacity-60 hover:opacity-100">
+              <div className={cn("absolute left-0 top-0 bottom-0 w-1 rounded-l-xl", bar)} />
+              <Icon className={cn("h-5 w-5 shrink-0 mt-0.5 ml-1", iconClass)} />
+              <p className="flex-1 text-sm font-medium leading-snug">{t.message}</p>
+              <button
+                onClick={() => removeToast(t.id)}
+                className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors mt-0.5"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -75,11 +88,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) {
-    return {
-      toast: () => {
-        /* Provider not mounted yet */
-      },
-    };
+    return { toast: () => {} };
   }
   return ctx;
 }

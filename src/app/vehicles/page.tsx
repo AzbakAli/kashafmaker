@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/app-layout";
-import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, Modal } from "@/components/ui/card";
+import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, Modal, ConfirmDialog, StatusDot } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -60,15 +60,23 @@ export default function VehiclesPage() {
     }
   };
 
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const deleteVehicle = async (vehicleId: string) => {
-    if (!window.confirm("Delete this vehicle? This action cannot be undone.")) return;
-    const res = await fetch(`/api/vehicles/${vehicleId}`, { method: "DELETE" });
-    if (res.ok) {
-      toast("Vehicle deleted successfully", "success");
-      fetchData();
-    } else {
-      const err = await res.json();
-      toast(err.error || "Failed to delete vehicle", "error");
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/vehicles/${vehicleId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast("Vehicle deleted successfully", "success");
+        fetchData();
+      } else {
+        const err = await res.json();
+        toast(err.error || "Failed to delete vehicle", "error");
+      }
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -194,20 +202,19 @@ export default function VehiclesPage() {
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <Link
                             href={`/vehicles/${vehicle.id}`}
-                            className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium text-xs transition-colors"
+                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
                           >
-                            View Details
-                            <ArrowRight className="h-3 w-3 ml-1" />
+                            View <ArrowRight className="h-3 w-3" />
                           </Link>
                           <button
                             type="button"
-                            className="text-red-600 hover:text-red-800 font-medium text-xs transition-colors"
-                            onClick={() => deleteVehicle(vehicle.id)}
+                            className="inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                            onClick={() => setDeleteTarget(vehicle.id as string)}
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </td>
@@ -297,6 +304,17 @@ export default function VehiclesPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteVehicle(deleteTarget);
+        }}
+        loading={deleting}
+        title="Delete Vehicle?"
+        message="This will permanently remove the vehicle and all assignments. This cannot be undone."
+      />
     </AppLayout>
   );
 }

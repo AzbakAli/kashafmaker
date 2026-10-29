@@ -23,6 +23,16 @@ body {
   to { transform: translateX(0); opacity: 1; }
 }
 
+@keyframes slide-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .animate-in {
   animation: slide-in-from-right 0.3s ease-out;
 }
@@ -30,3 +40,21 @@ body {
 .slide-in-from-right {
   animation-name: slide-in-from-right;
 }
+
+.animate-slide-up {
+  animation: slide-up 0.2s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Table row hover */
+.table-row-hover:hover td { background-color: #f8fafc; }
+
