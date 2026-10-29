@@ -150,6 +150,121 @@ const ENTRY_TYPE_VALUES = new Set([
   "double entry",
 ]);
 
+export const ICAO_COUNTRY_CODES: Record<string, string> = {
+  SAU: "Saudi Arabia",
+  GBR: "United Kingdom",
+  USA: "United States",
+  FRA: "France",
+  PAK: "Pakistan",
+  IND: "India",
+  EGY: "Egypt",
+  BGD: "Bangladesh",
+  IDN: "Indonesia",
+  TUR: "Turkey",
+  JOR: "Jordan",
+  SYR: "Syria",
+  IRQ: "Iraq",
+  YEM: "Yemen",
+  LBN: "Lebanon",
+  PSE: "Palestine",
+  DZA: "Algeria",
+  MAR: "Morocco",
+  TUN: "Tunisia",
+  LBY: "Libya",
+  KWT: "Kuwait",
+  QAT: "Qatar",
+  BHR: "Bahrain",
+  OMN: "Oman",
+  ARE: "United Arab Emirates",
+  MYS: "Malaysia",
+  PHL: "Philippines",
+  RUS: "Russia",
+  CHN: "China",
+  DEU: "Germany",
+  ITA: "Italy",
+  ESP: "Spain",
+  CAN: "Canada",
+  AUS: "Australia",
+  UZB: "Uzbekistan",
+  KAZ: "Kazakhstan",
+  TJK: "Tajikistan",
+  NGA: "Nigeria",
+  GHA: "Ghana",
+  KEN: "Kenya",
+  ZAF: "South Africa",
+  AFG: "Afghanistan",
+  IRN: "Iran",
+  SDN: "Sudan",
+  SOM: "Somalia",
+  ETH: "Ethiopia",
+  NPL: "Nepal",
+  LKA: "Sri Lanka",
+};
+
+export const KNOWN_COUNTRIES_AND_NATIONALITIES = new Set([
+  "united kingdom", "great britain", "britain", "uk", "england", "scotland", "wales", "british",
+  "united states", "united states of america", "usa", "us", "america", "american",
+  "saudi arabia", "kingdom of saudi arabia", "ksa", "saudi",
+  "united arab emirates", "uae", "emirati",
+  "pakistan", "pakistani",
+  "india", "indian",
+  "bangladesh", "bangladeshi",
+  "egypt", "egyptian",
+  "indonesia", "indonesian",
+  "malaysia", "malaysian",
+  "philippines", "filipino", "philippine",
+  "turkey", "turkish",
+  "jordan", "jordanian",
+  "syria", "syrian",
+  "iraq", "iraqi",
+  "yemen", "yemeni",
+  "lebanon", "lebanese",
+  "palestine", "palestinian",
+  "algeria", "algerian",
+  "morocco", "moroccan",
+  "tunisia", "tunisian",
+  "libya", "libyan",
+  "kuwait", "kuwaiti",
+  "qatar", "qatari",
+  "bahrain", "bahraini",
+  "oman", "omani",
+  "france", "french",
+  "germany", "german",
+  "italy", "italian",
+  "spain", "spanish",
+  "canada", "canadian",
+  "australia", "australian",
+  "russia", "russian",
+  "china", "chinese",
+  "uzbekistan", "uzbek",
+  "kazakhstan", "kazakh",
+  "tajikistan", "tajik",
+  "nigeria", "nigerian",
+  "ghana", "ghanaian",
+  "kenya", "kenyan",
+  "south africa", "south african",
+  "afghanistan", "afghan",
+  "iran", "iranian",
+  "sudan", "sudanese",
+  "somalia", "somali",
+  "ethiopia", "ethiopian",
+  "nepal", "nepalese", "nepali",
+  "sri lanka", "sri lankan",
+]);
+
+export function isCountryOrNationality(value: string): boolean {
+  if (!value) return false;
+  const clean = value.toLowerCase().replace(/[-–—|:;,.]+/g, " ").trim().replace(/\s+/g, " ");
+  if (KNOWN_COUNTRIES_AND_NATIONALITIES.has(clean)) return true;
+  for (const country of Object.values(ICAO_COUNTRY_CODES)) {
+    if (clean === country.toLowerCase()) return true;
+  }
+  for (const country of Object.values(ARABIC_NATIONALITY)) {
+    if (clean === country.toLowerCase()) return true;
+  }
+  return false;
+}
+
 const ARABIC_NATIONALITY: Record<string, string> = {
   فرنسا: "France",
   فرنسي: "France",
@@ -398,7 +513,7 @@ export function parseVisaFields(input: {
   if (mrz.nationality && !merged.nationality?.value) {
     merged.nationality = { value: mrz.nationality, labeled: true };
   }
-  if (mrz.fullName && !merged.fullName?.value) {
+  if (mrz.fullName && (!merged.fullName?.value || isCountryOrNationality(merged.fullName.value))) {
     merged.fullName = { value: mrz.fullName, labeled: true };
   }
 
@@ -428,6 +543,21 @@ export function parseVisaFields(input: {
     nationality: finalizeNationality(merged.nationality, fromOcr),
     visaType: finalizeVisaType(merged.visaType, fromOcr),
   };
+
+  // Cross-field validation: if fullName matches nationality or is a country name, invalidate it
+  if (
+    fields.fullName.value &&
+    (isCountryOrNationality(fields.fullName.value) ||
+      (fields.nationality.value &&
+        fields.fullName.value.toLowerCase().trim() === fields.nationality.value.toLowerCase().trim()))
+  ) {
+    fields.fullName = {
+      value: "",
+      status: "missing",
+      labeled: false,
+      warning: "Extracted passenger name matched nationality and was discarded.",
+    };
+  }
 
   const warnings: string[] = [];
   (Object.keys(fields) as VisaFieldKey[]).forEach((key) => {
@@ -573,14 +703,15 @@ function finalizeName(hit: { value: string; labeled: true } | undefined, fromOcr
   value = value
     .replace(/^(?:the\s*name|thename|the)\b\s*/gi, "")
     .replace(/\s+\bthe\b$/gi, "")
+    .replace(/^[-–—|:;,\s]+|[-–—|:;,\s]+$/g, "")
     .trim();
   if (!value) return missing("The Name field was empty.");
-  if (isBlockedName(value)) {
+  if (isBlockedName(value) || isCountryOrNationality(value)) {
     return {
       value: "",
       status: "missing",
       labeled: true,
-      warning: "Ignored a heading or authority name. The passenger Name field was not found.",
+      warning: "Extracted value was a country or authority name, not a personal name.",
     };
   }
   if (!hasEnoughNameLetters(value)) {
@@ -841,7 +972,9 @@ function stripNameNoise(value: string): string {
     .replace(/\bthename\b/gi, "")
     // Remove any remaining whole word "the" or "of the" from name
     .replace(/\b(?:of\s+)?the\b/gi, "")
-    .replace(/[|:;]+$/g, "");
+    .replace(/[|:;]+$/g, "")
+    // Strip leading or trailing hyphens, dashes, colons, punctuation
+    .replace(/^[-–—|:;,\s]+|[-–—|:;,\s]+$/g, "");
 
   for (const item of NAME_BLOCKLIST) {
     cleaned = cleaned.replace(new RegExp(`\\b${item}\\b`, "gi"), "");
@@ -853,7 +986,13 @@ function stripNameNoise(value: string): string {
 function cleanCapturedValue(value: string, field: VisaFieldKey) {
   let cleaned = stripKnownLabels(value);
   cleaned = preferEnglishValue(cleaned);
-  if (field === "fullName") cleaned = stripNameNoise(cleaned);
+  if (field === "fullName") {
+    cleaned = stripNameNoise(cleaned);
+    cleaned = cleaned.replace(/^[-–—|:;,\s]+|[-–—|:;,\s]+$/g, "").trim();
+    if (isCountryOrNationality(cleaned)) {
+      return "";
+    }
+  }
   if (field === "visaType") cleaned = stripEntryTypeTail(cleaned);
   return cleaned;
 }
@@ -949,8 +1088,9 @@ function joinTokens(tokens: LayoutToken[]) {
 }
 
 function isBlockedName(value: string) {
-  const lower = value.toLowerCase().trim();
-  return NAME_BLOCKLIST.some((item) => lower === item || lower.startsWith(item + ":") || lower.startsWith(item + " -"));
+  const lower = value.toLowerCase().replace(/[-–—|:;,.]+/g, " ").trim();
+  if (isCountryOrNationality(lower)) return true;
+  return NAME_BLOCKLIST.some((item) => lower === item || lower.startsWith(item + ":") || lower.startsWith(item + " -") || lower.startsWith(item + " "));
 }
 
 function hasEnoughNameLetters(value: string) {
@@ -992,57 +1132,6 @@ function passportCandidates(value: string) {
       return /^[A-Z0-9]+$/.test(clean) && /[A-Z]/.test(clean);
     });
 }
-
-const ICAO_COUNTRY_CODES: Record<string, string> = {
-  SAU: "Saudi Arabia",
-  GBR: "United Kingdom",
-  USA: "United States",
-  FRA: "France",
-  PAK: "Pakistan",
-  IND: "India",
-  EGY: "Egypt",
-  BGD: "Bangladesh",
-  IDN: "Indonesia",
-  TUR: "Turkey",
-  JOR: "Jordan",
-  SYR: "Syria",
-  IRQ: "Iraq",
-  YEM: "Yemen",
-  LBN: "Lebanon",
-  PSE: "Palestine",
-  DZA: "Algeria",
-  MAR: "Morocco",
-  TUN: "Tunisia",
-  LBY: "Libya",
-  KWT: "Kuwait",
-  QAT: "Qatar",
-  BHR: "Bahrain",
-  OMN: "Oman",
-  ARE: "United Arab Emirates",
-  MYS: "Malaysia",
-  PHL: "Philippines",
-  RUS: "Russia",
-  CHN: "China",
-  DEU: "Germany",
-  ITA: "Italy",
-  ESP: "Spain",
-  CAN: "Canada",
-  AUS: "Australia",
-  UZB: "Uzbekistan",
-  KAZ: "Kazakhstan",
-  TJK: "Tajikistan",
-  NGA: "Nigeria",
-  GHA: "Ghana",
-  KEN: "Kenya",
-  ZAF: "South Africa",
-  AFG: "Afghanistan",
-  IRN: "Iran",
-  SDN: "Sudan",
-  SOM: "Somalia",
-  ETH: "Ethiopia",
-  NPL: "Nepal",
-  LKA: "Sri Lanka",
-};
 
 export function parseMrzFromText(text: string): { fullName?: string; passportNumber?: string; nationality?: string } {
   if (!text) return {};

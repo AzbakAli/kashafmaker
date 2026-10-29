@@ -86,7 +86,7 @@ async function extractFromPdf(
       layoutText = layout.text;
       tokens = layout.tokens;
     } catch {
-      // PDF.js couldn't parse — use cached images or give helpful message
+      // PDF.js couldn't parse — use cached images or throw corrupt error
       const images = cachedImages.length > 0 ? cachedImages : [];
       if (images.length > 0) {
         try {
@@ -96,12 +96,7 @@ async function extractFromPdf(
           }
         } catch { /* fall through */ }
       }
-      return {
-        ...emptyExtraction("ocr", [
-          "This PDF uses features that couldn't be parsed automatically. Try saving it as a standard PDF from Adobe Acrobat (File → Save As → PDF) or upload a photo of the visa instead.",
-        ]),
-        needsPageRender: true,
-      };
+      throw Object.assign(new Error("The PDF could not be read. The file may be corrupt."), { status: 400 });
     }
   }
 

@@ -1,4 +1,5 @@
 import type { VisaExtractionResult, VisaFieldKey, FieldResult } from "./types";
+import { isCountryOrNationality } from "./parse-fields";
 
 interface AiVisaPayload {
   fullName?: string;
@@ -78,6 +79,7 @@ Extract the traveler/passenger information into a valid JSON object with exactly
 1. "fullName": The full personal name of the visa holder or passenger in English (e.g. "MOHAMMED KHALID AL-HARBI").
    - NEVER include label prefixes like "The Name", "thename", "Name:", "Holder:", "Applicant:", "Beneficiary:", or "الاسم".
    - NEVER include titles like "MR", "MRS", "MS".
+   - CRITICAL: A passenger's name is NEVER a country or nationality (e.g. "United Kingdom", "Saudi Arabia", "Pakistan"). If the personal traveler name is not on the document, leave it empty "".
 
 2. "passportNumber": The passport number or primary travel document number (e.g. "A12345678", "P98765432").
    - Do not include Visa Number, Border Number, or Application Number here.
@@ -153,6 +155,7 @@ If any field is missing or cannot be found from the document, set its value to a
     fullName = fullName
       .replace(/^(?:the\s*name|thename|the|name)\b\s*[:.\-]?\s*/gi, "")
       .replace(/\s+\bthe\b$/gi, "")
+      .replace(/^[-–—|:;,\s]+|[-–—|:;,\s]+$/g, "")
       .replace(/\s+/g, " ")
       .trim();
 
@@ -161,6 +164,14 @@ If any field is missing or cannot be found from the document, set its value to a
 
     let nationality = (payload.nationality || "").trim();
     let visaType = (payload.visaType || "").trim();
+
+    // Invalidate fullName if it was accidentally assigned a country or matches nationality
+    if (
+      isCountryOrNationality(fullName) ||
+      (nationality && fullName.toLowerCase() === nationality.toLowerCase())
+    ) {
+      fullName = "";
+    }
 
     // Standardize visaType and strip unwanted agency / office suffixes
     const lowerVisa = visaType.toLowerCase();

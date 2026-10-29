@@ -322,4 +322,35 @@ describe("parseVisaFields", () => {
     expect(result.fullName).toBe("MOHAMMED ALI");
     expect(result.visaType).toBe("Umrah");
   });
+
+  it("never accepts nationality or country as full name and extracts real name from MRZ or document", () => {
+    const text = `
+      Kingdom of Saudi Arabia
+      Ministry of Foreign Affairs
+      Name:
+      United Kingdom - بريطانيا
+      Passport No: 12345678
+      Visa Type: Umrah
+      P<GBRDOE<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      1234567890GBR8001011M2501011<<<<<<<<<<<<<<02
+    `;
+    const result = parseVisaFields({ text });
+    expect(result.fullName).toBe("JOHN DOE");
+    expect(result.fullName).not.toContain("United Kingdom");
+    expect(result.nationality).toBe("United Kingdom");
+    expect(result.passportNumber).toBe("12345678");
+  });
+
+  it("rejects country name from being passenger name even without MRZ", () => {
+    const text = `
+      Name: United Kingdom -
+      Nationality: United Kingdom
+      Passport No: 12345678
+      Visa Type: Umrah
+    `;
+    const result = parseVisaFields({ text });
+    expect(result.fullName).toBe("");
+    expect(result.fields.fullName.status).toBe("missing");
+    expect(result.nationality).toBe("United Kingdom");
+  });
 });
