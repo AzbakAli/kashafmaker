@@ -11,11 +11,14 @@ interface AiVisaPayload {
 // Fallback key is read from environment. Set GEMINI_API_KEY in your deployment
 // environment (Vercel, Railway, etc.) or in a local .env file.
 // Do NOT hardcode credentials here — GitHub push protection will block it.
-// Model priority: try newest first, fall back to lite/older on quota errors.
+// Model priority: confirmed working models first, then fallbacks.
+// Order matters — first model that responds OK wins.
 const GEMINI_MODELS = [
-  "gemini-3.8-flash",       // Newest, working confirmed
-  "gemini-3.5-flash",       // Fallback (may hit quota on free tier)
-  "gemini-3.5-flash-lite",  // Last resort lite fallback
+  "gemini-3.8-flash",        // Best quality
+  "gemini-3.5-flash",        // Fast, accurate
+  "gemini-3.1-flash-lite",   // Lite — very reliable fallback
+  "gemini-3.5-flash-lite",   // Secondary lite fallback
+  "gemini-3.6-flash",        // Extra fallback
 ];
 
 export async function aiExtractVisa(input: {
@@ -107,7 +110,7 @@ If any field is missing or cannot be found from the document, set its value to a
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000); // 30s per model
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10s per model — fail fast, try next
 
         const response = await fetch(url, {
           method: "POST",
