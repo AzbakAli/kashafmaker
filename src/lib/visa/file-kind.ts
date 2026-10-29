@@ -2,7 +2,7 @@ export type VisaFileKind = "pdf" | "image";
 
 export const MAX_VISA_FILE_BYTES = 15 * 1024 * 1024;
 
-const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff"]);
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "heic", "heif"]);
 
 export function detectVisaFileKind(buffer: Uint8Array, mimeType = "", fileName = ""): VisaFileKind | null {
   if (buffer.length >= 5 && ascii(buffer, 0, 5) === "%PDF-") return "pdf";
@@ -14,11 +14,13 @@ export function detectVisaFileKind(buffer: Uint8Array, mimeType = "", fileName =
   if (buffer.length >= 12 && ascii(buffer, 0, 4) === "RIFF" && ascii(buffer, 8, 4) === "WEBP") return "image";
   if (buffer.length >= 2 && ascii(buffer, 0, 2) === "BM") return "image";
   if (isTiff(buffer)) return "image";
+  // HEIF / HEIC container magic bytes: ftypheic, ftypheix, ftypmif1, ftypmsf1
+  if (buffer.length >= 12 && ascii(buffer, 4, 4) === "ftyp") return "image";
 
   const mime = mimeType.toLowerCase();
   if (mime === "application/pdf") return "pdf";
   if (mime.startsWith("image/")) {
-    if (mime.includes("heic") || mime.includes("heif") || mime.includes("svg")) return null;
+    if (mime.includes("svg")) return null;
     return "image";
   }
 

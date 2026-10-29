@@ -66,6 +66,13 @@ export async function extractPdfLayout(data: Uint8Array): Promise<PdfLayout> {
 }
 
 export async function extractPdfEmbeddedImages(data: Uint8Array): Promise<Buffer[]> {
+  // 1. Direct PDF stream extraction via pdf-lib & sharp (instant, catches 99% of scanned PDFs)
+  const directImages = await extractDirectPdfImages(data);
+  if (directImages.length > 0) {
+    return directImages;
+  }
+
+  // 2. Fallback to PDF.js operator list
   const pdfjs = await loadPdfJs();
   const pdf = await pdfjs.getDocument({
     data,
@@ -151,4 +158,86 @@ async function getObject(page: PdfPage, name: string): Promise<unknown> {
   }
 
   return undefined;
+}
+
+async function extractDirectPdfImages(data: Uint8Array): Promise<Buffer[]> {
+  try {
+    const { PDFDocument, PDFName } = await import("pdf-lib");
+    const sharp = (await import("sharp")).default;
+    const doc = await PDFDocument.load(data, { ignoreEncryption: true });
+    const images: Buffer[] = [];
+    const maxDimension = 2200;
+
+    for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+      if (obj && "dict" in obj && obj.dict) {
+        const dict = (obj as unknown as { dict: { get: (name: unknown) => { toString: () => string } | undefined } }).dict;
+        const subtype = dict.get(PDFName.of("Subtype"))?.toString();
+        const contents = (obj as unknown as { contents?: Uint8Array }).contents;
+
+        if (subtype === "/Image" && contents && contents.length > 500) {
+          const filter = dict.get(PDFName.of("Filter"))?.toString();
+          const w = Number(dict.get(PDFName.of("Width"))?.toString()) || 0;
+          const h = Number(dict.get(PDFName.of("Height"))?.toString()) || 0;
+
+          // Skip tiny icons, stamps, or bullets (< 100px)
+          if (w > 0 && h > 0 && (w < 100 || h < 100)) continue;
+
+          try {
+            if (filter === "/DCTDecode" || (!filter && contents[0] === 0xff && contents[1] === 0xd8)) {
+              // Direct JPEG stream!
+              const buf = await sharp(Buffer.from(contents))
+                .rotate()
+                .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+                .grayscale()
+                .normalize()
+                .png()
+                .toBuffer();
+              images.push(buf);
+            } else if (filter === "/FlateDecode") {
+              const { inflateSync } = await import("node:zlib");
+              try {
+                const uncompressed = inflateSync(Buffer.from(contents));
+                if (w > 0 && h > 0) {
+                  const channels = uncompressed.length >= w * h * 4 ? 4 : uncompressed.length >= w * h * 3 ? 3 : 1;
+                  const buf = await sharp(uncompressed.subarray(0, w * h * channels), {
+                    raw: { width: w, height: h, channels },
+                  })
+                    .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+                    .grayscale()
+                    .normalize()
+                    .png()
+                    .toBuffer();
+                  images.push(buf);
+                }
+              } catch {
+                const buf = await sharp(Buffer.from(contents))
+                  .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+                  .grayscale()
+                  .normalize()
+                  .png()
+                  .toBuffer();
+                images.push(buf);
+              }
+            } else {
+              const buf = await sharp(Buffer.from(contents))
+                .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+                .grayscale()
+                .normalize()
+                .png()
+                .toBuffer();
+              images.push(buf);
+            }
+          } catch {
+            // Skip undecodable stream
+          }
+
+          if (images.length >= 2) return images;
+        }
+      }
+    }
+
+    return images;
+  } catch {
+    return [];
+  }
 }

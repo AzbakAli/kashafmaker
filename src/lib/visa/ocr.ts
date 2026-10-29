@@ -28,7 +28,7 @@ export interface OcrPageResult {
 
 export async function ocrImageBuffer(image: Buffer): Promise<OcrPageResult> {
   const worker = await getWorker();
-  const prepared = prepareImage(image);
+  const prepared = await prepareImage(image);
   const recognized = await worker.recognize(prepared);
   const words = recognized.data.words || [];
   const tokens: LayoutToken[] = words
@@ -64,15 +64,26 @@ export async function ocrImages(images: Buffer[]): Promise<OcrPageResult> {
   };
 }
 
-function prepareImage(image: Buffer): Buffer {
+async function prepareImage(image: Buffer): Promise<Buffer> {
   try {
-    const decoded = decodePngRgba(image);
-    if (!decoded) return image;
-    const downscaled = downscaleRgba(decoded.width, decoded.height, decoded.rgba, 2200);
-    const contrasted = contrastRgba(downscaled.rgba, 1.25);
-    return encodePng(downscaled.width, downscaled.height, contrasted);
+    const sharp = (await import("sharp")).default;
+    return await sharp(image)
+      .rotate() // Automatically autorotates phone camera photos based on EXIF
+      .resize({ width: 2200, height: 2200, fit: "inside", withoutEnlargement: true })
+      .grayscale()
+      .normalize()
+      .png()
+      .toBuffer();
   } catch {
-    return image;
+    try {
+      const decoded = decodePngRgba(image);
+      if (!decoded) return image;
+      const downscaled = downscaleRgba(decoded.width, decoded.height, decoded.rgba, 2200);
+      const contrasted = contrastRgba(downscaled.rgba, 1.25);
+      return encodePng(downscaled.width, downscaled.height, contrasted);
+    } catch {
+      return image;
+    }
   }
 }
 

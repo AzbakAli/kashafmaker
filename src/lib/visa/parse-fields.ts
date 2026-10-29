@@ -40,17 +40,18 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
   {
     field: "passportNumber",
     patterns: [
-      /^passport\s*(no|number|#|num)$/,
+      /^passport\s*(no|number|#|num)?$/,
       /^passport$/,
       /^p\.?\s*no$/,
-      /^(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)$/,
+      /^passp?o?r?t?\s*(no|number|#|num)?$/,
+      /^(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?$/,
       /^passport\s*(?:\/|\s+or\s+)?(?:travel\s+)?doc(?:ument)?\s*(?:no|number|#|num)?$/,
       /^رقم\s*جواز(?:\s*السفر)?$/,
       /^رقم\s*الجواز$/,
       /^جواز\s*السفر$/,
-      /^رقم\s*وثيقة(?:\s*السفر)?$/,
-      /^وثيقة\s*السفر$/,
-      /^رقم\s*الوثيقة$/,
+      /^رقم\s*وثيق[ةه](?:\s*السفر)?$/,
+      /^وثيق[ةه]\s*السفر$/,
+      /^رقم\s*الوثيق[ةه]$/,
     ],
   },
   {
@@ -61,11 +62,10 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
       /^nationalité$/,
       /^citizenship$/,
       /^country\s+of\s+(?:nationality|citizenship)$/,
-      /^الجنسية$/,
-      /^جنسية$/,
-      /^بلد\s*الجنسية$/,
-      /^بلد\s*الإقامة$/,
-      /^بلد\s*الاقامة$/,
+      /^ال?جنسي[ةه]$/,
+      /^بلد\s*ال?جنسي[ةه]$/,
+      /^بلد\s*ال?إ?قام[ةه]$/,
+      /^دولة\s*ال?جنسي[ةه]$/,
     ],
   },
   {
@@ -75,31 +75,30 @@ const TARGET_LABELS: Array<{ field: VisaFieldKey; patterns: RegExp[] }> = [
       /^visa\s*type$/,
       /^visa\s*class$/,
       /^visa\s*category$/,
-      /^نوع\s*التأشيرة$/,
-      /^نوع\s*التاشيرة$/,
-      /^فئة\s*التأشيرة$/,
-      /^الغرض\s*من\s*الزيارة$/,
-      /^نوع\s*الإقامة$/,
-      /^نوع\s*الاقامة$/,
+      /^visa\s*kind$/,
+      /^نوع\s*ال[تت]أشير[ةه]$/,
+      /^فئ[ةه]\s*ال[تت]أشير[ةه]$/,
+      /^الغرض\s*من\s*الزيار[ةه]$/,
+      /^نوع\s*ال?إ?قام[ةه]$/,
     ],
   },
 ];
 
 const STOP_LABELS: Array<{ id: string; patterns: RegExp[] }> = [
-  { id: "visa_no", patterns: [/^visa\s*(no|number|#)$/, /^رقم\s*التأشيرة$/, /^رقم\s*التاشيرة$/] },
+  { id: "visa_no", patterns: [/^visa\s*(no|number|#)$/, /^رقم\s*ال[تت]أشير[ةه]$/] },
   { id: "application_no", patterns: [/^application\s*(no|number|#)$/, /^رقم\s*الطلب$/] },
   { id: "entry_type", patterns: [/^entry\s*type$/, /^type\s*of\s*entry$/, /^نوع\s*الدخول$/, /^عدد\s*مرات\s*الدخول$/] },
-  { id: "duration", patterns: [/^duration\s*of\s*stay$/, /^مدة\s*الإقامة$/, /^مدة\s*الاقامة$/] },
-  { id: "issue_date", patterns: [/^date\s*of\s*issue$/, /^issue\s*date$/, /^تاريخ\s*الإصدار$/, /^صالحة\s*اعتبارا(?:\s*من)?$/] },
-  { id: "valid_until", patterns: [/^valid\s*until$/, /^expiry/, /^تاريخ\s*الانتهاء$/, /^صالحة\s*لغاية$/] },
-  { id: "place_of_issue", patterns: [/^place\s*of\s*issue$/, /^مكان\s*الإصدار$/, /^مصدر\s*التأشيرة$/, /^مصدر\s*التاشيرة$/] },
+  { id: "duration", patterns: [/^duration\s*of\s*stay$/, /^مد[ةه]\s*ال?إ?قام[ةه]$/] },
+  { id: "issue_date", patterns: [/^date\s*of\s*issue$/, /^issue\s*date$/, /^تاريخ\s*ال?إ?صدار$/, /^صالح[ةه]\s*اعتبارا(?:\s*من)?$/] },
+  { id: "valid_until", patterns: [/^valid\s*until$/, /^expiry/, /^تاريخ\s*الانتهاء$/, /^صالح[ةه]\s*لغاية$/] },
+  { id: "place_of_issue", patterns: [/^place\s*of\s*issue$/, /^مكان\s*ال?إ?صدار$/, /^مصدر\s*ال[تت]أشير[ةه]$/] },
   { id: "birth_date", patterns: [/^birth\s*date$/, /^date\s*of\s*birth$/, /^dob$/, /^تاريخ\s*الميلاد$/] },
   { id: "gender", patterns: [/^gender$/, /^sex$/, /^الجنس$/] },
   { id: "country_of_birth", patterns: [/^country\s*of\s*birth$/] },
-  { id: "sponsor", patterns: [/^(?:the\s+)?sponsor$/, /^(?:the\s+)?carrier$/, /^(?:the\s+)?company$/, /^(?:the\s+)?employer$/, /^الكفيل$/, /^جهة\s*العمل$/, /^صاحب\s*العمل$/, /^الناقل$/, /^المستقدم$/, /^الشركة$/] },
+  { id: "sponsor", patterns: [/^(?:the\s+)?sponsor$/, /^(?:the\s+)?carrier$/, /^(?:the\s+)?company$/, /^(?:the\s+)?employer$/, /^الكفيل$/, /^جه[ةه]\s*العمل$/, /^صاحب\s*العمل$/, /^الناقل$/, /^المستقدم$/, /^الشرك[ةه]$/] },
   { id: "purpose", patterns: [/^(?:the\s+)?purpose(?:\s+of\s+visit)?$/, /^الغرض$/] },
   { id: "applicant", patterns: [/^(?:the\s+)?applicant$/, /^مقدم\s*الطلب$/] },
-  { id: "port_of_entry", patterns: [/^(?:the\s+)?port\s*of\s*entry$/, /^(?:the\s+)?port$/, /^جهة\s*القدوم$/, /^المنفذ$/] },
+  { id: "port_of_entry", patterns: [/^(?:the\s+)?port\s*of\s*entry$/, /^(?:the\s+)?port$/, /^جه[ةه]\s*القدوم$/, /^المنفذ$/] },
   { id: "mahram", patterns: [/^(?:the\s+)?mahram$/, /^المحرم$/] },
 ];
 
@@ -298,11 +297,28 @@ const ARABIC_NATIONALITY: Record<string, string> = {
 const ARABIC_VISA_TYPE: Record<string, string> = {
   "زيارة سياحة": "Tourism Visit",
   "زيارة سياحية": "Tourism Visit",
+  "تأشيرة سياحة": "Tourism Visit",
+  "تاشيرة سياحة": "Tourism Visit",
   سياحة: "Tourism Visit",
+  "تأشيرة عمرة": "Umrah",
+  "تاشيرة عمرة": "Umrah",
   عمرة: "Umrah",
+  "تأشيرة حج": "Hajj",
+  "تاشيرة حج": "Hajj",
   حج: "Hajj",
+  "زيارة عائلية": "Family Visit",
+  "تأشيرة عائلية": "Family Visit",
+  عائلية: "Family Visit",
+  "زيارة شخصية": "Personal Visit",
+  "زيارة عمل": "Business Visit",
+  "زيارة تجارية": "Business Visit",
+  "تأشيرة عمل": "Work",
+  "تاشيرة عمل": "Work",
   عمل: "Work",
   مرور: "Transit",
+  إقامة: "Resident / Work",
+  اقامة: "Resident / Work",
+  مقيم: "Resident / Work",
 };
 
 const ARABIC_SCRIPT = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
@@ -333,16 +349,21 @@ export function parseVisaFields(input: {
   const fromOcr = Boolean(input.fromOcr);
   const method = input.method || (fromOcr ? "ocr" : "pdf_text");
   const tokenLines = input.tokens?.length ? clusterLines(input.tokens) : [];
-  const textLines = tokenLines.length
-    ? tokenLines.map((line) => joinTokens(line)).filter(Boolean)
-    : splitLines(input.text || "");
+  const directTextLines = splitLines(input.text || "");
+  const tokenTextLines = tokenLines.map((line) => joinTokens(line)).filter(Boolean);
 
-  const labeled = extractLabeledValues(textLines);
+  // Extract from direct text lines first (natural order from PDF or OCR)
+  const labeledFromText = extractLabeledValues(directTextLines);
+  // Extract from clustered token lines
+  const labeledFromTokens = tokenTextLines.length ? extractLabeledValues(tokenTextLines) : {};
+  // Extract spatial token layout
   const spatial = tokenLines.length ? extractSpatialValues(tokenLines) : {};
-  const merged = mergeValues(labeled, spatial);
+
+  // Merge: direct text has highest reliability, supplemented by tokens and spatial layout
+  const merged = mergeValues(mergeValues(labeledFromText, labeledFromTokens), spatial);
 
   // Check for MRZ (Machine Readable Zone) lines at the bottom of the document
-  const mrz = parseMrzFromText(input.text || textLines.join("\n"));
+  const mrz = parseMrzFromText(input.text || directTextLines.join("\n"));
   if (mrz.passportNumber && !merged.passportNumber?.value) {
     merged.passportNumber = { value: mrz.passportNumber, labeled: true };
   }
@@ -355,7 +376,7 @@ export function parseVisaFields(input: {
 
   // Fallback visa type if missing from labeled fields
   if (!merged.visaType?.value) {
-    const fullText = (input.text || textLines.join(" ")).toLowerCase();
+    const fullText = (input.text || directTextLines.join(" ")).toLowerCase();
     if (fullText.includes("umrah") || fullText.includes("عمرة")) {
       merged.visaType = { value: "Umrah", labeled: true };
     } else if (fullText.includes("hajj") || fullText.includes("حج")) {
@@ -364,7 +385,7 @@ export function parseVisaFields(input: {
       merged.visaType = { value: "Tourism Visit", labeled: true };
     } else if (fullText.includes("family") || fullText.includes("عائلية")) {
       merged.visaType = { value: "Family Visit", labeled: true };
-    } else if (fullText.includes("business") || fullText.includes("زيارة عمل")) {
+    } else if (fullText.includes("business") || fullText.includes("زيارة عمل") || fullText.includes("تجارية")) {
       merged.visaType = { value: "Business Visit", labeled: true };
     } else if (fullText.includes("transit") || fullText.includes("مرور")) {
       merged.visaType = { value: "Transit", labeled: true };
@@ -545,26 +566,29 @@ function finalizePassport(hit: { value: string; labeled: true } | undefined, fro
       warning: "A Passport No. label was found, but the value was not a usable document number.",
     };
   }
-  if (candidates.length > 1) {
-    return {
-      value: "",
-      status: "needs_review",
-      labeled: true,
-      warning: "More than one possible passport number was found. Confirm Passport No. from the document.",
-    };
+
+  // Select the best candidate (prefer 1-2 letters + 6-9 digits)
+  let normalized = candidates[0];
+  const standard = candidates.find((c) => /^[A-Z]{1,2}\d{6,9}$/.test(c));
+  if (standard) {
+    normalized = standard;
   }
-  const normalized = candidates[0];
+
   const ambiguous = fromOcr && AMBIGUOUS_PASSPORT.test(normalized);
-  const status: FieldStatus = ambiguous || fromOcr ? "needs_review" : "ok";
+  const status: FieldStatus = ambiguous || fromOcr || candidates.length > 1 ? "needs_review" : "ok";
+  const warning = candidates.length > 1
+    ? `Multiple document numbers found (${candidates.join(", ")}). Selected ${normalized}. Confirm Passport No. from the document.`
+    : ambiguous
+      ? "Passport number contains characters that OCR can confuse (O/0 or I/1). Confirm it from the document."
+      : fromOcr
+        ? "Passport number came from OCR. Confirm it from the document."
+        : undefined;
+
   return {
     value: normalized,
     status,
     labeled: true,
-    warning: ambiguous
-      ? "Passport number contains characters that OCR can confuse (O/0 or I/1). Confirm it from the document."
-      : fromOcr
-        ? "Passport number came from OCR. Confirm it from the document."
-        : undefined,
+    warning,
   };
 }
 
@@ -755,6 +779,11 @@ function stripNameNoise(value: string): string {
     // Remove any remaining whole word "the" or "of the" from name
     .replace(/\b(?:of\s+)?the\b/gi, "")
     .replace(/[|:;]+$/g, "");
+
+  for (const item of NAME_BLOCKLIST) {
+    cleaned = cleaned.replace(new RegExp(`\\b${item}\\b`, "gi"), "");
+  }
+
   return collapseSpaces(cleaned);
 }
 
@@ -830,7 +859,10 @@ function splitLines(text: string) {
 }
 
 function collapseSpaces(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function clusterLines(tokens: LayoutToken[]) {
@@ -854,8 +886,8 @@ function joinTokens(tokens: LayoutToken[]) {
 }
 
 function isBlockedName(value: string) {
-  const lower = value.toLowerCase();
-  return NAME_BLOCKLIST.some((item) => lower === item || lower.includes(item));
+  const lower = value.toLowerCase().trim();
+  return NAME_BLOCKLIST.some((item) => lower === item || lower.startsWith(item + ":") || lower.startsWith(item + " -"));
 }
 
 function hasEnoughNameLetters(value: string) {
@@ -951,10 +983,14 @@ const ICAO_COUNTRY_CODES: Record<string, string> = {
 
 export function parseMrzFromText(text: string): { fullName?: string; passportNumber?: string; nationality?: string } {
   if (!text) return {};
-  const rawLines = text
+  const normalizedText = text
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
+    .replace(/[«»‹›\(\)\{\}\[\]\|\/\\]/g, "<");
+
+  const rawLines = normalizedText
     .split(/\r?\n/)
     .map((l) => l.replace(/[^A-Za-z0-9<]/g, "").toUpperCase())
-    .filter((l) => l.length >= 28);
+    .filter((l) => l.length >= 26);
 
   for (let i = 0; i < rawLines.length - 1; i++) {
     const l1 = rawLines[i];
