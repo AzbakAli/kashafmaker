@@ -3,8 +3,6 @@ import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 export const StoragePaths = {
   templates: "templates",
@@ -47,7 +45,7 @@ const urlCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
 export async function readFile(relativePath: string): Promise<Buffer> {
   const safe = relativePath.replace(/\\/g, "/");
 
-  // URLs (Supabase etc.) — with in-memory caching (10 min TTL) and local fallback
+  // URLs — with in-memory caching (10 min TTL) and local fallback
   if (safe.startsWith("http://") || safe.startsWith("https://")) {
     const cached = urlCache.get(safe);
     if (cached && cached.expiresAt > Date.now()) {
@@ -65,7 +63,7 @@ export async function readFile(relativePath: string): Promise<Buffer> {
       // If network fails/times out, check local fallback below
     }
 
-    // Local fallback if Supabase network fetch fails or times out
+    // Local fallback if remote fetch fails or times out
     if (safe.includes("nbis-kashaf.pdf")) {
       const fallbacks = [
         path.join(process.cwd(), "uploads", "templates", "nbis-kashaf.pdf"),
@@ -115,8 +113,7 @@ export async function deleteFile(relativePath: string): Promise<void> {
   try {
     const safe = relativePath.replace(/\\/g, "/");
 
-    // If it's a Supabase Storage URL, we'd need to delete from Supabase
-    // For now, skip Supabase deletion to avoid complexity
+    // If it's a remote URL, skip local file deletion
     if (safe.startsWith("http://") || safe.startsWith("https://")) {
       return;
     }
