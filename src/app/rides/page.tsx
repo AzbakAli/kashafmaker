@@ -124,8 +124,8 @@ export default function RidesPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           options={[
             { value: "", label: "All Statuses" },
-            { value: "SCHEDULED", label: "Scheduled" },
-            { value: "IN_PROGRESS", label: "In Progress" },
+            { value: "SCHEDULED", label: "Pending Approval" },
+            { value: "IN_PROGRESS", label: "Approved / Active" },
             { value: "COMPLETED", label: "Completed" },
             { value: "CANCELLED", label: "Cancelled" },
           ]}
@@ -246,7 +246,11 @@ export default function RidesPage() {
                         <td className="px-5 py-3.5">
                           <Badge variant={statusVariant(ride.status)}>
                             <StatusDot status={statusDot(ride.status)} />
-                            {ride.status.replace("_", " ")}
+                            {ride.status === "SCHEDULED"
+                              ? "Pending Approval"
+                              : ride.status === "IN_PROGRESS"
+                              ? "Approved"
+                              : ride.status.replace("_", " ")}
                           </Badge>
                         </td>
                         <td className="px-5 py-3.5 hidden sm:table-cell">

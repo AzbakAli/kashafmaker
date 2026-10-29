@@ -48,13 +48,13 @@ export const vehicleSchema = z.object({
 
 export const passengerSchema = z.object({
   fullName: z.string().min(1, "Full name is required"),
-  passportNumber: z.string().optional(),
-  nationality: z.string().optional(),
-  gender: z.enum(["MALE", "FEMALE", "OTHER"]).optional(),
-  visaType: z.string().optional(),
-  iqamaNumber: z.string().optional(),
-  phone: z.string().optional(),
-  notes: z.string().optional(),
+  passportNumber: z.string().nullable().optional(),
+  nationality: z.string().nullable().optional(),
+  gender: z.enum(["MALE", "FEMALE", "OTHER"]).nullable().optional(),
+  visaType: z.string().nullable().optional(),
+  iqamaNumber: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 export const rideSchema = z.object({

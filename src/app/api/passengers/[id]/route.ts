@@ -36,8 +36,18 @@ export async function PUT(
 
   const { id } = await params;
   try {
-    const body = await request.json();
-    const data = passengerSchema.parse(body);
+    const raw = await request.json();
+    const cleaned = {
+      fullName: (raw.fullName || "").trim(),
+      passportNumber: raw.passportNumber ? String(raw.passportNumber).trim() : null,
+      nationality: raw.nationality ? String(raw.nationality).trim() : null,
+      gender: raw.gender && ["MALE", "FEMALE", "OTHER"].includes(raw.gender) ? raw.gender : null,
+      visaType: raw.visaType ? String(raw.visaType).trim() : null,
+      iqamaNumber: raw.iqamaNumber ? String(raw.iqamaNumber).trim() : null,
+      phone: raw.phone ? String(raw.phone).trim() : null,
+      notes: null,
+    };
+    const data = passengerSchema.parse(cleaned);
     const passenger = await prisma.passenger.update({ where: { id }, data });
     return NextResponse.json(passenger);
   } catch (error) {
@@ -45,6 +55,8 @@ export async function PUT(
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
+
+export const PATCH = PUT;
 
 export async function DELETE(
   _request: NextRequest,

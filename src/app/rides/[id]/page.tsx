@@ -4,11 +4,16 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/app-layout";
-import { PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, LoadingSpinner } from "@/components/ui/card";
+import {
+  PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, LoadingSpinner, ConfirmDialog, StatusDot,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/utils";
-import { FileText, Download, Copy, CheckCircle, XCircle, Edit, Printer, Trash2, MapPin, Calendar, Users, Car, User, ArrowRight } from "lucide-react";
+import {
+  FileText, Download, Copy, CheckCircle, XCircle, Edit, Printer, Trash2,
+  MapPin, Calendar, Users, Car, User, ArrowRight, ShieldCheck, Clock, AlertCircle, Sparkles
+} from "lucide-react";
 
 interface RideDetail {
   id: string;
@@ -28,28 +33,10 @@ interface RideDetail {
   passengers: Array<{
     sortOrder: number;
     passengerSnapshot: { fullName?: string; passportNumber?: string; nationality?: string; gender?: string; visaType?: string } | null;
-    passenger: { fullName: string; passportNumber: string | null; nationality: string | null; gender: string | null; visaType: string | null };
+    passenger: { id: string; fullName: string; passportNumber: string | null; nationality: string | null; gender: string | null; visaType: string | null };
   }>;
   kashafDocuments: Array<{ id: string; documentNumber: string; createdAt: string; status: string }>;
 }
-
-const statusVariant = (status: string) => {
-  switch (status) {
-    case "COMPLETED": return "success" as const;
-    case "IN_PROGRESS": return "info" as const;
-    case "CANCELLED": return "danger" as const;
-    default: return "warning" as const;
-  }
-};
-
-const statusIcon = (status: string) => {
-  switch (status) {
-    case "COMPLETED": return "✓";
-    case "IN_PROGRESS": return "●";
-    case "CANCELLED": return "✕";
-    default: return "○";
-  }
-};
 
 export default function RideDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,19 +45,74 @@ export default function RideDetailPage() {
   const [ride, setRide] = useState<RideDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
-  const [deleting, setDeleting] = useState<string | null>(null);
+  // Confirm delete Kashaf dialog
+  const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
+  const [deletingDoc, setDeletingDoc] = useState(false);
+
+  // Confirm cancel ride dialog
+  const [cancelRideConfirm, setCancelRideConfirm] = useState(false);
 
   const fetchRide = () => {
     fetch(`/api/rides/${id}`)
       .then((r) => r.json())
-      .then(setRide)
+      .then((data) => {
+        if (data && "id" in data) setRide(data);
+      })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchRide(); }, [id]);
+  useEffect(() => {
+    fetchRide();
+  }, [id]);
+
+  const isApproved = ride ? ride.status !== "SCHEDULED" && ride.status !== "CANCELLED" : false;
+  const isPendingApproval = ride ? ride.status === "SCHEDULED" : false;
+
+  const handleApproveRide = async () => {
+    setUpdatingStatus(true);
+    try {
+      const res = await fetch(`/api/rides/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status", status: "IN_PROGRESS" }),
+      });
+      if (res.ok) {
+        toast("Ride approved! You can now generate the Kashaf document.", "success");
+        fetchRide();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast(err.error || "Failed to approve ride", "error");
+      }
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleStatusChange = async (status: string) => {
+    setUpdatingStatus(true);
+    try {
+      const res = await fetch(`/api/rides/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status", status }),
+      });
+      if (res.ok) {
+        toast(`Ride marked as ${status.toLowerCase().replace("_", " ")}`, "success");
+        fetchRide();
+      }
+    } finally {
+      setUpdatingStatus(false);
+      setCancelRideConfirm(false);
+    }
+  };
 
   const generateKashaf = async () => {
+    if (!isApproved) {
+      toast("Please approve this ride first before generating Kashaf", "error");
+      return;
+    }
     setGenerating(true);
     try {
       const res = await fetch(`/api/rides/${id}`, {
@@ -79,12 +121,10 @@ export default function RideDetailPage() {
         body: JSON.stringify({ action: "generate-kashaf" }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to generate Kashaf");
       }
-      const newDoc = await res.json();
-      setRide((prev) => (prev ? { ...prev, kashafDocuments: [newDoc, ...prev.kashafDocuments] } : null));
-      toast("Kashaf generated successfully", "success");
+      toast("Kashaf document generated successfully!", "success");
       fetchRide();
     } catch (error) {
       toast(error instanceof Error ? error.message : "Failed to generate Kashaf", "error");
@@ -93,243 +133,388 @@ export default function RideDetailPage() {
     }
   };
 
-  const deleteKashaf = async (documentId: string) => {
-    if (!window.confirm("Delete this Kashaf PDF? This cannot be undone.")) return;
-    setDeleting(documentId);
+  const deleteKashaf = async () => {
+    if (!deleteDocId) return;
+    setDeletingDoc(true);
     try {
-      const res = await fetch(`/api/documents/${documentId}`, { method: "DELETE" });
+      const res = await fetch(`/api/documents/${deleteDocId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
-      toast("Kashaf deleted", "success");
+      toast("Kashaf PDF deleted", "success");
       fetchRide();
     } catch (error) {
       toast(error instanceof Error ? error.message : "Failed to delete Kashaf", "error");
     } finally {
-      setDeleting(null);
+      setDeletingDoc(false);
+      setDeleteDocId(null);
     }
   };
 
   const duplicateRide = async () => {
-    const res = await fetch(`/api/rides/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "duplicate" }),
-    });
-    if (res.ok) {
-      const newRide = await res.json();
-      router.push(`/rides/${newRide.id}`);
+    try {
+      const res = await fetch(`/api/rides/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "duplicate" }),
+      });
+      if (res.ok) {
+        const newRide = await res.json();
+        toast("Ride duplicated successfully", "success");
+        router.push(`/rides/${newRide.id}`);
+      }
+    } catch {
+      toast("Failed to duplicate ride", "error");
     }
   };
 
-  const updateStatus = async (status: string) => {
-    const res = await fetch(`/api/rides/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "status", status }),
-    });
-    if (res.ok) {
-      toast(`Ride marked as ${status.toLowerCase().replace("_", " ")}`, "success");
-      fetchRide();
-    }
-  };
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="flex justify-center py-20">
+          <LoadingSpinner />
+        </div>
+      </AppLayout>
+    );
+  }
 
-  if (loading) return <AppLayout><div className="flex justify-center py-20"><LoadingSpinner /></div></AppLayout>;
-  if (!ride) return <AppLayout><p>Ride not found</p></AppLayout>;
+  if (!ride) {
+    return (
+      <AppLayout>
+        <div className="py-12 text-center">
+          <p className="text-slate-500 mb-4">Ride not found</p>
+          <Button href="/rides" variant="outline">Back to Rides</Button>
+        </div>
+      </AppLayout>
+    );
+  }
 
   const latestDoc = ride.kashafDocuments[0];
 
   return (
     <AppLayout>
+      {/* PAGE HEADER */}
       <PageHeader
         title={`Ride ${ride.rideNumber}`}
-        description={formatDate(ride.date)}
+        description={`${formatDate(ride.date)} • ${ride.pickup} → ${ride.destination}`}
         action={
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/rides/${ride.id}/edit`}>
-              <Button variant="secondary">
-                <Edit className="h-4 w-4 mr-2" /> Edit
-              </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/rides/${ride.id}/edit`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
+            >
+              <Edit className="h-4 w-4" /> Edit Ride
             </Link>
-            <Button
-              onClick={generateKashaf}
-              disabled={generating}
-            >
-              <FileText className="h-4 w-4 mr-2" /> {generating ? "Generating..." : "Generate Kashaf"}
-            </Button>
-            {latestDoc && (
-              <>
-                <Button
-                  variant="success"
-                  href={`/api/documents/${latestDoc.id}?pdf=1`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Printer className="h-4 w-4 mr-2" /> View / Print
-                </Button>
-                <Button
-                  variant="primary"
-                  href={`/api/documents/${latestDoc.id}?download=1`}
-                >
-                  <Download className="h-4 w-4 mr-2" /> Download PDF
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={deleting === latestDoc.id}
-                  onClick={() => deleteKashaf(latestDoc.id)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" /> {deleting === latestDoc.id ? "Deleting..." : "Delete Kashaf"}
-                </Button>
-              </>
+
+            {/* If ride is pending approval: show Approve Ride button */}
+            {isPendingApproval && (
+              <Button
+                onClick={handleApproveRide}
+                disabled={updatingStatus}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+              >
+                <CheckCircle className="h-4 w-4 mr-1.5" />
+                {updatingStatus ? "Approving…" : "Approve Ride"}
+              </Button>
             )}
+
+            {/* If approved: show Generate Kashaf button */}
+            {isApproved && (
+              <Button
+                onClick={generateKashaf}
+                disabled={generating}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
+              >
+                <Sparkles className="h-4 w-4 mr-1.5" />
+                {generating ? "Generating Kashaf…" : latestDoc ? "Regenerate Kashaf" : "Generate Kashaf"}
+              </Button>
+            )}
+
+            {/* If Kashaf exists, quick view/print */}
+            {latestDoc && (
+              <Button
+                variant="outline"
+                href={`/api/documents/${latestDoc.id}?pdf=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                <Printer className="h-4 w-4 mr-1.5" /> View / Print PDF
+              </Button>
+            )}
+
             <Button
-              variant="secondary"
+              variant="outline"
               onClick={duplicateRide}
+              className="border-slate-200 text-slate-700 hover:bg-slate-50"
             >
-              <Copy className="h-4 w-4 mr-2" /> Duplicate
+              <Copy className="h-4 w-4 mr-1.5" /> Duplicate
             </Button>
           </div>
         }
       />
 
-      <div className="mb-6 flex gap-2">
-        <Badge variant={statusVariant(ride.status)} className="font-medium px-3 py-1">
-          <span className="mr-1">{statusIcon(ride.status)}</span>
-          {ride.status.replace("_", " ")}
-        </Badge>
-        {latestDoc ? (
-          <Badge variant="success" className="font-medium px-3 py-1">
-            <FileText className="h-3 w-3 mr-1" /> Kashaf Generated
-          </Badge>
+      {/* APPROVAL STATUS BANNER */}
+      {isPendingApproval ? (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50/80 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="h-10 w-10 shrink-0 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-amber-950 text-sm sm:text-base">
+                Ride Pending Approval
+              </h4>
+              <p className="text-xs sm:text-sm text-amber-800 mt-0.5">
+                Review passenger information and route details. Click <strong>&quot;Approve Ride&quot;</strong> to authorize this trip and unlock Kashaf PDF generation.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={handleApproveRide}
+            disabled={updatingStatus}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 shadow-sm whitespace-nowrap self-start sm:self-auto"
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            {updatingStatus ? "Approving…" : "Approve Ride Now"}
+          </Button>
+        </div>
+      ) : ride.status === "CANCELLED" ? (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 flex items-center gap-3">
+          <XCircle className="h-5 w-5 text-red-600 shrink-0" />
+          <p className="text-sm text-red-800 font-medium">
+            This ride has been cancelled. Kashaf document generation is disabled.
+          </p>
+        </div>
+      ) : (
+        <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 shrink-0 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-bold text-emerald-950 text-sm">
+                Ride Approved &amp; Authorized
+              </p>
+              <p className="text-xs text-emerald-700">
+                Official Kashaf document can be generated, downloaded, or printed anytime.
+              </p>
+            </div>
+          </div>
+          {!latestDoc && (
+            <Button
+              onClick={generateKashaf}
+              disabled={generating}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-4 py-2"
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              {generating ? "Generating…" : "Generate Kashaf Now"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* STATUS BADGES BAR */}
+      <div className="mb-6 flex flex-wrap items-center gap-2.5">
+        {isPendingApproval ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">
+            <StatusDot status="warning" /> Pending Approval
+          </span>
+        ) : ride.status === "CANCELLED" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 border border-red-200 px-3 py-1 text-xs font-semibold text-red-800">
+            <StatusDot status="danger" /> Cancelled
+          </span>
         ) : (
-          <Badge variant="warning" className="font-medium px-3 py-1">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-800">
+            <StatusDot status="success" /> Approved ({ride.status.replace("_", " ")})
+          </span>
+        )}
+
+        {latestDoc ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700">
+            <FileText className="h-3.5 w-3.5 text-indigo-600" />
+            Kashaf Generated: {latestDoc.documentNumber}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
             Kashaf Pending
-          </Badge>
+          </span>
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* LEFT COLUMN: Route Details & Passengers Table */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-indigo-600" /> Trip Details
+          {/* Trip Details Card */}
+          <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-4 px-6">
+              <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-indigo-600" /> Trip Details
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Pickup</p>
-                    <p className="font-semibold text-slate-900">{ride.pickup}</p>
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-slate-400" />
-                  <div className="flex-1">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Destination</p>
-                    <p className="font-semibold text-slate-900">{ride.destination}</p>
-                  </div>
+            <CardContent className="p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gradient-to-r from-indigo-50/60 to-purple-50/60 rounded-xl border border-indigo-100/60">
+                <div className="flex-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Pickup Location</p>
+                  <p className="font-bold text-slate-900 text-sm mt-0.5">{ride.pickup}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Trip Type</p>
-                    <p className="font-medium text-slate-900">{ride.tripType || "—"}</p>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Stops</p>
-                    <p className="font-medium text-slate-900">{ride.intermediateStops || "—"}</p>
-                  </div>
+                <div className="hidden sm:flex items-center justify-center h-8 w-8 rounded-full bg-white shadow-sm border border-slate-200 text-slate-400">
+                  <ArrowRight className="h-4 w-4" />
                 </div>
-                {ride.notes && (
-                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-xs text-amber-700 uppercase tracking-wide mb-1">Notes</p>
-                    <p className="font-medium text-slate-900">{ride.notes}</p>
-                  </div>
-                )}
+                <div className="flex-1 sm:text-right">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Destination</p>
+                  <p className="font-bold text-slate-900 text-sm mt-0.5">{ride.destination}</p>
+                </div>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Trip Type</p>
+                  <p className="font-semibold text-slate-800 text-sm mt-0.5">{ride.tripType || "Standard Transfer"}</p>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Intermediate Stops</p>
+                  <p className="font-semibold text-slate-800 text-sm mt-0.5">{ride.intermediateStops || "None (Direct Route)"}</p>
+                </div>
+              </div>
+
+              {ride.notes && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Notes / Instructions</p>
+                  <p className="text-sm text-slate-700 mt-0.5 whitespace-pre-wrap">{ride.notes}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-indigo-600" /> Passengers ({ride.passengers.length})
+          {/* Passengers Table Card */}
+          <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-600" /> Passengers ({ride.passengers.length})
               </CardTitle>
+              <Link
+                href={`/rides/${ride.id}/edit`}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                + Add / Manage Passengers
+              </Link>
             </CardHeader>
             <CardContent className="p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">#</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Name</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Passport</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Nationality</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Gender</th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Visa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ride.passengers.map((rp, i) => {
-                    const snap = rp.passengerSnapshot;
-                    return (
-                    <tr key={i} className="border-b border-slate-100 hover:bg-indigo-50/30 transition-colors">
-                      <td className="px-4 py-3 font-medium text-slate-900">{i + 1}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">{snap?.fullName || rp.passenger.fullName}</td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded">
-                          {snap?.passportNumber || rp.passenger.passportNumber || "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{snap?.nationality || rp.passenger.nationality || "—"}</td>
-                      <td className="px-4 py-3 text-slate-600">{snap?.gender || rp.passenger.gender || "—"}</td>
-                      <td className="px-4 py-3 text-slate-600">{snap?.visaType || rp.passenger.visaType || "—"}</td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {ride.passengers.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm">
+                  No passengers assigned to this ride.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/60">
+                        <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                        <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Passport No</th>
+                        <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nationality</th>
+                        <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Visa Type</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {ride.passengers.map((rp, idx) => {
+                        const snap = rp.passengerSnapshot;
+                        const fullName = snap?.fullName || rp.passenger.fullName;
+                        const passport = snap?.passportNumber || rp.passenger.passportNumber;
+                        const nationality = snap?.nationality || rp.passenger.nationality;
+                        const visaType = snap?.visaType || rp.passenger.visaType;
+
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                                  {fullName.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="font-semibold text-slate-900 text-sm">{fullName}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              {passport ? (
+                                <span className="font-mono text-xs bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md font-semibold border border-slate-200">
+                                  {passport}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">Not provided</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5 text-xs text-slate-700">
+                              {nationality || "—"}
+                            </td>
+                            <td className="px-5 py-3.5 text-xs text-slate-700 hidden sm:table-cell">
+                              {visaType ? (
+                                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-100">
+                                  {visaType}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
 
+          {/* KASHAF DOCUMENTS SECTION */}
           {ride.kashafDocuments.length > 0 && (
-            <Card className="shadow-md">
-              <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-indigo-600" /> Kashaf Documents
+            <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-4 px-6">
+                <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-indigo-600" /> Generated Kashaf Documents ({ride.kashafDocuments.length})
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 space-y-3">
                 {ride.kashafDocuments.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg mb-2 hover:bg-slate-100 transition-colors">
+                  <div
+                    key={doc.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-indigo-200 transition-colors"
+                  >
                     <div>
-                      <p className="font-semibold text-slate-900">{doc.documentNumber}</p>
-                      <p className="text-xs text-slate-500">{new Date(doc.createdAt).toLocaleString()}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold font-mono text-slate-900 text-sm">{doc.documentNumber}</p>
+                        <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                          Ready
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Generated on {new Date(doc.createdAt).toLocaleString()}
+                      </p>
                     </div>
-                    <div className="flex gap-2">
+
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
                       <Button
-                        variant="outline"
                         size="sm"
                         href={`/api/documents/${doc.id}?pdf=1`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-3 py-1.5 shadow-sm"
                       >
-                        <Printer className="h-3 w-3 mr-1" /> View
+                        <Printer className="h-3.5 w-3.5 mr-1" /> View / Print
                       </Button>
                       <Button
-                        variant="outline"
                         size="sm"
+                        variant="outline"
                         href={`/api/documents/${doc.id}?download=1`}
-                        className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                        className="border-slate-300 text-slate-700 hover:bg-slate-50 text-xs px-3 py-1.5"
                       >
-                        <Download className="h-3 w-3 mr-1" /> Download
+                        <Download className="h-3.5 w-3.5 mr-1" /> Download
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={deleting === doc.id}
-                        onClick={() => deleteKashaf(doc.id)}
-                        className="border-red-500 text-red-600 hover:bg-red-50"
+                      <button
+                        type="button"
+                        onClick={() => setDeleteDocId(doc.id)}
+                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                        title="Delete Kashaf PDF"
                       >
-                        <Trash2 className="h-3 w-3 mr-1" /> Delete
-                      </Button>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -338,95 +523,103 @@ export default function RideDetailPage() {
           )}
         </div>
 
+        {/* RIGHT COLUMN: Driver, Vehicle, & Quick Actions */}
         <div className="space-y-6">
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-indigo-600" /> Driver
+          {/* Driver Card */}
+          <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-3.5 px-5">
+              <CardTitle className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <User className="h-4 w-4 text-indigo-600" /> Assigned Driver
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-5">
               {ride.driverSnapshot?.name || ride.driver ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-indigo-50 rounded-lg">
-                    <p className="text-xs text-indigo-700 uppercase tracking-wide mb-1">Name</p>
-                    <p className="font-semibold text-slate-900">{ride.driverSnapshot?.name || ride.driver?.name}</p>
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                    {(ride.driverSnapshot?.name || ride.driver?.name || "D").charAt(0).toUpperCase()}
                   </div>
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Phone</p>
-                    <p className="font-medium text-slate-900">{ride.driverSnapshot?.phone || ride.driver?.phone || "—"}</p>
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">
+                      {ride.driverSnapshot?.name || ride.driver?.name}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {ride.driverSnapshot?.phone || ride.driver?.phone || "No phone registered"}
+                    </p>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <User className="h-12 w-12 text-slate-300 mb-2" />
-                  <p className="text-sm text-slate-500">No driver assigned</p>
-                </div>
+                <p className="text-xs text-slate-400 italic">No driver assigned to this ride</p>
               )}
             </CardContent>
           </Card>
 
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-              <CardTitle className="flex items-center gap-2">
-                <Car className="h-5 w-5 text-indigo-600" /> Vehicle
+          {/* Vehicle Card */}
+          <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-3.5 px-5">
+              <CardTitle className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <Car className="h-4 w-4 text-indigo-600" /> Assigned Vehicle
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-5">
               {ride.vehicleSnapshot?.plateNumber || ride.vehicle ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-indigo-50 rounded-lg">
-                    <p className="text-xs text-indigo-700 uppercase tracking-wide mb-1">Vehicle</p>
-                    <p className="font-semibold text-slate-900">{ride.vehicleSnapshot?.make || ride.vehicle?.make} {ride.vehicleSnapshot?.model || ride.vehicle?.model}</p>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Plate</p>
-                    <p className="font-medium text-slate-900">{ride.vehicleSnapshot?.plateNumber || ride.vehicle?.plateNumber}</p>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Type</p>
-                    <p className="font-medium text-slate-900">{ride.vehicleSnapshot?.vehicleType || ride.vehicle?.vehicleType}</p>
+                <div className="space-y-2">
+                  <p className="font-bold text-slate-900 text-sm">
+                    {ride.vehicleSnapshot?.make || ride.vehicle?.make} {ride.vehicleSnapshot?.model || ride.vehicle?.model}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs bg-slate-100 px-2.5 py-1 rounded font-bold border border-slate-200 text-slate-800">
+                      {ride.vehicleSnapshot?.plateNumber || ride.vehicle?.plateNumber}
+                    </span>
+                    {(ride.vehicleSnapshot?.vehicleType || ride.vehicle?.vehicleType) && (
+                      <span className="text-xs text-slate-500">
+                        {ride.vehicleSnapshot?.vehicleType || ride.vehicle?.vehicleType}
+                      </span>
+                    )}
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <Car className="h-12 w-12 text-slate-300 mb-2" />
-                  <p className="text-sm text-slate-500">No vehicle assigned</p>
-                </div>
+                <p className="text-xs text-slate-400 italic">No vehicle assigned to this ride</p>
               )}
             </CardContent>
           </Card>
 
-          <Card className="shadow-md">
-            <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-              <CardTitle>Ride Actions</CardTitle>
+          {/* Ride Workflow Actions */}
+          <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-3.5 px-5">
+              <CardTitle className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Ride Actions
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {ride.status === "SCHEDULED" && (
+            <CardContent className="p-5 space-y-2.5">
+              {isPendingApproval ? (
                 <Button
-                  variant="success"
-                  className="w-full"
-                  onClick={() => updateStatus("IN_PROGRESS")}
+                  onClick={handleApproveRide}
+                  disabled={updatingStatus}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                 >
-                  <CheckCircle className="h-4 w-4 mr-2" /> Start Ride
+                  <CheckCircle className="h-4 w-4 mr-2" /> Approve Ride
                 </Button>
+              ) : (
+                <>
+                  {ride.status !== "COMPLETED" && ride.status !== "CANCELLED" && (
+                    <Button
+                      variant="outline"
+                      className="w-full border-slate-300 text-slate-700 hover:bg-slate-50"
+                      onClick={() => handleStatusChange("COMPLETED")}
+                      disabled={updatingStatus}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2 text-emerald-600" /> Mark as Completed
+                    </Button>
+                  )}
+                </>
               )}
-              {ride.status !== "COMPLETED" && ride.status !== "CANCELLED" && (
-                <Button
-                  variant="primary"
-                  className="w-full"
-                  onClick={() => updateStatus("COMPLETED")}
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" /> Mark Completed
-                </Button>
-              )}
+
               {ride.status !== "CANCELLED" && (
                 <Button
-                  variant="danger"
-                  className="w-full"
-                  onClick={() => {
-                    if (window.confirm("Cancel this ride?")) updateStatus("CANCELLED");
-                  }}
+                  variant="outline"
+                  className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                  onClick={() => setCancelRideConfirm(true)}
+                  disabled={updatingStatus}
                 >
                   <XCircle className="h-4 w-4 mr-2" /> Cancel Ride
                 </Button>
@@ -435,6 +628,26 @@ export default function RideDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Delete Kashaf Confirm Dialog */}
+      <ConfirmDialog
+        open={!!deleteDocId}
+        onClose={() => !deletingDoc && setDeleteDocId(null)}
+        onConfirm={deleteKashaf}
+        loading={deletingDoc}
+        title="Delete Kashaf PDF?"
+        message="This will delete this generated Kashaf document. You can generate a new one anytime."
+      />
+
+      {/* Cancel Ride Confirm Dialog */}
+      <ConfirmDialog
+        open={cancelRideConfirm}
+        onClose={() => setCancelRideConfirm(false)}
+        onConfirm={() => handleStatusChange("CANCELLED")}
+        loading={updatingStatus}
+        title="Cancel This Ride?"
+        message="Are you sure you want to cancel this ride? The status will be updated to CANCELLED."
+      />
     </AppLayout>
   );
 }

@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
-  PageHeader, Card, CardContent, EmptyState, LoadingSpinner, Modal, ConfirmDialog,
+  PageHeader, Card, CardContent, EmptyState, LoadingSpinner, Modal, ConfirmDialog, Badge,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
-  Plus, Search, UserCircle, Globe, Trash2, ArrowRight, Edit2, ScanSearch,
+  Plus, Search, UserCircle, Globe, Trash2, ArrowRight, Edit, ScanSearch, Check,
 } from "lucide-react";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { VisaImportButton } from "@/components/passengers/visa-import";
@@ -24,6 +24,7 @@ interface Passenger {
   gender: string | null;
   visaType: string | null;
   phone: string | null;
+  iqamaNumber?: string | null;
 }
 
 const EMPTY_FORM = {
@@ -34,7 +35,6 @@ const EMPTY_FORM = {
   visaType: "",
   iqamaNumber: "",
   phone: "",
-  notes: "",
 };
 
 export default function PassengersPage() {
@@ -45,7 +45,7 @@ export default function PassengersPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Modal state — null means create, string means edit that id
+  // Edit / Add modal state
   const [editId, setEditId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -72,14 +72,13 @@ export default function PassengersPage() {
   const openEdit = (p: Passenger) => {
     setEditId(p.id);
     setForm({
-      fullName: p.fullName,
+      fullName: p.fullName || "",
       passportNumber: p.passportNumber || "",
       nationality: p.nationality || "",
       gender: p.gender || "",
       visaType: p.visaType || "",
-      iqamaNumber: "",
+      iqamaNumber: p.iqamaNumber || "",
       phone: p.phone || "",
-      notes: "",
     });
     setModalOpen(true);
   };
@@ -123,20 +122,33 @@ export default function PassengersPage() {
     setSaving(true);
     try {
       const url = editId ? `/api/passengers/${editId}` : "/api/passengers";
-      const method = editId ? "PATCH" : "POST";
+      const method = editId ? "PUT" : "POST";
+      const payload = {
+        fullName: form.fullName.trim(),
+        passportNumber: form.passportNumber.trim() || undefined,
+        nationality: form.nationality.trim() || undefined,
+        gender: form.gender || undefined,
+        visaType: form.visaType.trim() || undefined,
+        iqamaNumber: form.iqamaNumber.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+      };
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, gender: form.gender || undefined }),
+        body: JSON.stringify(payload),
       });
+
       if (res.ok) {
-        toast(editId ? "Passenger updated" : "Passenger created", "success");
+        toast(editId ? "Passenger updated successfully" : "Passenger added successfully", "success");
         setModalOpen(false);
         fetchData();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         toast(err.error || "Failed to save passenger", "error");
       }
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Network error", "error");
     } finally {
       setSaving(false);
     }
@@ -164,9 +176,9 @@ export default function PassengersPage() {
     <AppLayout>
       <PageHeader
         title="Passengers"
-        description="Store traveler details once, then reuse them on rides and Kashaf documents."
+        description="Manage passenger profiles, passport information, and visa details"
         action={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <VisaImportButton
               onConfirm={(fields) => {
                 setForm((cur) => applyVisaFieldsToPassengerForm(cur, fields));
@@ -176,25 +188,25 @@ export default function PassengersPage() {
               onConfirmMultiple={handleImportMultiple}
               label="Scan Visa"
             />
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               <Plus className="h-4 w-4" /> Add Passenger
             </Button>
           </div>
         }
       />
 
-      {/* Search */}
-      <div className="mb-5 relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {/* Search Filter Bar */}
+      <div className="mb-6 relative">
+        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
-          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-all"
           placeholder="Search by name, passport number, or nationality…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      <Card>
+      <Card className="border border-slate-200 shadow-sm overflow-hidden rounded-xl">
         <CardContent className="p-0">
           {loading ? (
             <div className="flex justify-center py-16">
@@ -202,13 +214,13 @@ export default function PassengersPage() {
             </div>
           ) : passengers.length === 0 ? (
             <EmptyState
-              title="No passengers yet"
+              title="No passengers found"
               description={
                 search
                   ? "Try a different search term"
-                  : "Add passengers manually or import from a visa scan."
+                  : "Add your first passenger manually or scan a visa to import automatically."
               }
-              icon={<UserCircle className="h-12 w-12" />}
+              icon={<UserCircle className="h-12 w-12 text-slate-300" />}
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   <VisaImportButton
@@ -219,7 +231,7 @@ export default function PassengersPage() {
                     }}
                     onConfirmMultiple={handleImportMultiple}
                   />
-                  <Button onClick={openCreate}>
+                  <Button onClick={openCreate} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                     <Plus className="h-4 w-4" /> Add Passenger
                   </Button>
                 </div>
@@ -229,95 +241,100 @@ export default function PassengersPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/70">
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                      Name
+                  <tr className="border-b border-slate-100 bg-slate-50/80">
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Passenger Name
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                      Passport
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Passport No
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">
                       Nationality
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden md:table-cell">
-                      Gender
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden lg:table-cell">
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">
                       Visa Type
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide hidden xl:table-cell">
-                      Phone
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">
+                      Phone / Iqama
                     </th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                    <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100 bg-white">
                   {passengers.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-3.5">
+                      <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 shrink-0 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
-                            {p.fullName.charAt(0).toUpperCase()}
+                          <div className="h-9 w-9 shrink-0 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                            {p.fullName ? p.fullName.charAt(0).toUpperCase() : "P"}
                           </div>
-                          <Link
-                            href={`/passengers/${p.id}`}
-                            className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors text-sm truncate max-w-[180px]"
-                          >
-                            {p.fullName}
-                          </Link>
+                          <div>
+                            <p className="font-semibold text-slate-900 text-sm">{p.fullName}</p>
+                            {p.gender && (
+                              <p className="text-[11px] text-slate-400 capitalize">{p.gender.toLowerCase()}</p>
+                            )}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-5 py-4">
                         {p.passportNumber ? (
-                          <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-md">
+                          <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-medium border border-slate-200">
                             {p.passportNumber}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-400 italic text-xs">Not provided</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 hidden sm:table-cell">
+                      <td className="px-5 py-4 hidden sm:table-cell">
                         {p.nationality ? (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                            <Globe className="h-3.5 w-3.5 text-slate-300" />
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                            <Globe className="h-3.5 w-3.5 text-slate-400" />
                             {p.nationality}
                           </div>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-400 text-xs">—</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-xs text-slate-600 hidden md:table-cell">
-                        {p.gender
-                          ? p.gender.charAt(0) + p.gender.slice(1).toLowerCase()
-                          : <span className="text-slate-300">—</span>}
+                      <td className="px-5 py-4 hidden md:table-cell">
+                        {p.visaType ? (
+                          <span className="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                            {p.visaType}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
                       </td>
-                      <td className="px-5 py-3.5 text-xs text-slate-600 hidden lg:table-cell">
-                        {p.visaType || <span className="text-slate-300">—</span>}
+                      <td className="px-5 py-4 hidden lg:table-cell">
+                        <p className="text-xs text-slate-700 font-medium">{p.phone || "—"}</p>
+                        {p.iqamaNumber && (
+                          <p className="text-[11px] font-mono text-slate-400">IQ: {p.iqamaNumber}</p>
+                        )}
                       </td>
-                      <td className="px-5 py-3.5 text-xs text-slate-600 hidden xl:table-cell">
-                        {p.phone || <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => openEdit(p)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm"
+                            title="Edit passenger"
                           >
-                            <Edit2 className="h-3 w-3" /> Edit
+                            <Edit className="h-3.5 w-3.5" />
+                            <span>Edit</span>
                           </button>
                           <Link
                             href={`/passengers/${p.id}`}
-                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
                           >
-                            View <ArrowRight className="h-3 w-3" />
+                            <span>Open</span>
+                            <ArrowRight className="h-3 w-3" />
                           </Link>
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(p.id)}
-                            className="inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                            className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 transition-colors"
+                            title="Delete passenger"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -332,62 +349,65 @@ export default function PassengersPage() {
         </CardContent>
       </Card>
 
-      {/* Add / Edit Modal */}
+      {/* Add / Edit Passenger Modal (Clean, No Notes) */}
       <Modal
         open={modalOpen}
         onClose={() => !saving && setModalOpen(false)}
-        title={editId ? "Edit Passenger" : "Add Passenger"}
+        title={editId ? "Edit Passenger Details" : "Add New Passenger"}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {!editId && (
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
-              <p className="mb-2 text-sm font-medium text-indigo-900 flex items-center gap-1.5">
-                <ScanSearch className="h-4 w-4" /> Have a visa file?
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3.5">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                <ScanSearch className="h-4 w-4 text-indigo-600" /> Have a visa PDF or photo?
               </p>
               <VisaImportButton
                 disabled={saving}
                 onConfirm={(fields) => {
                   setForm((cur) => applyVisaFieldsToPassengerForm(cur, fields));
                 }}
-                onConfirmMultiple={async (passengers) => {
-                  await handleImportMultiple(passengers);
+                onConfirmMultiple={async (imported) => {
+                  await handleImportMultiple(imported);
                   setModalOpen(false);
                 }}
               />
               <p className="mt-2 text-xs text-indigo-700">
-                Fills name, passport, nationality, and visa type automatically.
+                AI Vision automatically fills name, passport number, nationality, and visa type.
               </p>
             </div>
           )}
+
           <Input
-            label="Full Name"
+            label="Full Name *"
             value={form.fullName}
             onChange={(e) => setForm({ ...form, fullName: e.target.value })}
             required
-            placeholder="Enter passenger's full name"
+            placeholder="e.g. MOHAMMED KHALID AL-HARBI"
           />
-          <div className="grid grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Passport Number"
               value={form.passportNumber}
               onChange={(e) => setForm({ ...form, passportNumber: e.target.value })}
-              placeholder="Travel document number"
+              placeholder="e.g. A12345678"
             />
             <Input
               label="Nationality"
               value={form.nationality}
               onChange={(e) => setForm({ ...form, nationality: e.target.value })}
-              placeholder="Country of citizenship"
+              placeholder="e.g. Saudi Arabia, Pakistan"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select
               label="Gender"
               value={form.gender}
               onChange={(e) => setForm({ ...form, gender: e.target.value })}
               options={[
-                { value: "", label: "Select gender" },
+                { value: "", label: "Select gender..." },
                 { value: "MALE", label: "Male" },
                 { value: "FEMALE", label: "Female" },
                 { value: "OTHER", label: "Other" },
@@ -397,15 +417,16 @@ export default function PassengersPage() {
               label="Visa Type"
               value={form.visaType}
               onChange={(e) => setForm({ ...form, visaType: e.target.value })}
-              placeholder="e.g., Umrah, Tourism Visit"
+              placeholder="e.g. Umrah, Tourism Visit"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Iqama Number"
               value={form.iqamaNumber}
               onChange={(e) => setForm({ ...form, iqamaNumber: e.target.value })}
-              placeholder="Saudi residence ID"
+              placeholder="10-digit Saudi residence ID"
             />
             <Input
               label="Phone Number"
@@ -414,18 +435,23 @@ export default function PassengersPage() {
               placeholder="+966 5X XXX XXXX"
             />
           </div>
-          <Textarea
-            label="Notes"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            placeholder="Additional information"
-          />
-          <div className="flex gap-3 justify-end pt-3 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+              disabled={saving}
+              className="border-slate-300"
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : editId ? "Save Changes" : "Add Passenger"}
+            <Button
+              type="submit"
+              disabled={saving}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]"
+            >
+              {saving ? "Saving…" : editId ? "Save Changes" : "Save Passenger"}
             </Button>
           </div>
         </form>
@@ -437,7 +463,7 @@ export default function PassengersPage() {
         onConfirm={handleDelete}
         loading={deleting}
         title="Delete Passenger?"
-        message="This will permanently remove the passenger and all associated records. This cannot be undone."
+        message="This will permanently delete this passenger record. This action cannot be undone."
       />
     </AppLayout>
   );
