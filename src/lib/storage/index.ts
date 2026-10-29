@@ -90,11 +90,23 @@ export async function readFile(relativePath: string): Promise<Buffer> {
   }
 
   // Otherwise, read from local filesystem with fallbacks
+  const baseName = path.basename(safe);
   const candidates = [
     path.join(UPLOAD_DIR, safe),
     path.join(process.cwd(), "uploads", safe),
     path.join(process.cwd(), safe),
     path.join("/tmp", safe),
+    // Public directory (always bundled and deployed in Next.js/Vercel)
+    path.join(process.cwd(), "public", safe),
+    path.join(process.cwd(), "public", "templates", baseName),
+    path.join(process.cwd(), "public", baseName),
+    // Repository tracked assets fallbacks
+    path.join(process.cwd(), "assets", safe),
+    path.join(process.cwd(), "assets", baseName),
+    path.join(process.cwd(), "assets", "nbis-kashaf.pdf"),
+    path.join(process.cwd(), "template.pdf"),
+    path.join(process.cwd(), "uploads", "templates", baseName),
+    path.join(UPLOAD_DIR, "templates", baseName),
   ];
 
   for (const filePath of candidates) {

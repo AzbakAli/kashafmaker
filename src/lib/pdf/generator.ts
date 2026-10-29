@@ -166,6 +166,7 @@ let cachedLetterheadBytes: Buffer | null = null;
 async function loadLetterhead(pdfDoc: PDFDocument): Promise<PDFImage | null> {
   if (!cachedLetterheadBytes) {
     const candidates = [
+      path.join(process.cwd(), "public", "templates", "nbis-letterhead.png"),
       path.join(process.cwd(), "assets", "nbis-letterhead.png"),
       path.join(UPLOAD_DIR, "templates", "nbis-letterhead.png"),
       path.join(process.cwd(), "uploads", "templates", "nbis-letterhead.png"),

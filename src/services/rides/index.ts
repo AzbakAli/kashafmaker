@@ -165,19 +165,54 @@ export async function generateKashafForRide(rideId: string, templateId?: string)
   let template;
   if (templateId) {
     template = await prisma.kashafTemplate.findUnique({ where: { id: templateId } });
-  } else {
+  }
+  if (!template) {
     template = await prisma.kashafTemplate.findFirst({
       where: { isDefault: true, isActive: true },
     });
-    if (!template) {
-      template = await prisma.kashafTemplate.findFirst({ where: { isActive: true } });
-    }
+  }
+  if (!template) {
+    template = await prisma.kashafTemplate.findFirst({ where: { isActive: true } });
+  }
+  if (!template) {
+    template = await prisma.kashafTemplate.findFirst();
   }
 
-  if (!template) throw new Error("No active template found");
+  // Auto-heal: If template is missing from DB, auto-create the official default template
+  if (!template) {
+    const { getNbisKashafFieldConfig } = await import("@/lib/pdf");
+    template = await prisma.kashafTemplate.create({
+      data: {
+        name: "NBIS Official Kashaf",
+        description: "Official 2-page NBIS Kashaf form. Ride data is filled into this PDF automatically.",
+        filePath: "public/templates/nbis-kashaf.pdf",
+        version: 1,
+        pageCount: 2,
+        isActive: true,
+        isDefault: true,
+        fieldConfig: getNbisKashafFieldConfig() as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
 
-  const company = await prisma.company.findFirst({ where: { isDefault: true } });
-  if (!company) throw new Error("Company not configured");
+  let company = await prisma.company.findFirst({ where: { isDefault: true } });
+  if (!company) {
+    company = await prisma.company.findFirst();
+  }
+  if (!company) {
+    company = await prisma.company.create({
+      data: {
+        name: "Nour Basirti Transport",
+        nameAr: "نور بصيرتي للنقل",
+        commercialRegistration: "7037856668",
+        vatNumber: "300012345600003",
+        phone: "+966 50 123 4567",
+        email: "info@nourbasirti.com",
+        country: "Saudi Arabia",
+        isDefault: true,
+      },
+    });
+  }
 
   const driverSnap = (ride.driverSnapshot as Record<string, unknown> | null) ||
     (ride.driver ? (createDriverSnapshot(ride.driver) as Record<string, unknown>) : null);

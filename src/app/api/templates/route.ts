@@ -13,9 +13,26 @@ export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const templates = await prisma.kashafTemplate.findMany({
+  let templates = await prisma.kashafTemplate.findMany({
     orderBy: { createdAt: "desc" },
   });
+
+  if (templates.length === 0) {
+    const defaultTemplate = await prisma.kashafTemplate.create({
+      data: {
+        name: "NBIS Official Kashaf",
+        description: "Official 2-page NBIS Kashaf form. Ride data is filled into this PDF automatically.",
+        filePath: "public/templates/nbis-kashaf.pdf",
+        version: 1,
+        pageCount: 2,
+        isActive: true,
+        isDefault: true,
+        fieldConfig: getNbisKashafFieldConfig() as unknown as Prisma.InputJsonValue,
+      },
+    });
+    templates = [defaultTemplate];
+  }
+
   return NextResponse.json(templates);
 }
 
