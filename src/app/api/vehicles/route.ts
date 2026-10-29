@@ -8,13 +8,15 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
+  const excludeInactive = searchParams.get("excludeInactive") === "true";
   const vehicles = await searchVehicles(
     searchParams.get("q") || undefined,
-    searchParams.get("status") || undefined
+    searchParams.get("status") || undefined,
+    excludeInactive
   );
   return NextResponse.json(vehicles, {
     headers: {
-      "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
+      "Cache-Control": "no-store, must-revalidate",
     },
   });
 }

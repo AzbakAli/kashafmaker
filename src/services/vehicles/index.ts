@@ -43,10 +43,14 @@ export async function getVehicleDetails(id: string) {
   });
 }
 
-export async function searchVehicles(query?: string, status?: string) {
+export async function searchVehicles(query?: string, status?: string, excludeInactive?: boolean) {
   return prisma.vehicle.findMany({
     where: {
-      ...(status ? { status: status as "AVAILABLE" | "ASSIGNED" | "MAINTENANCE" | "INACTIVE" } : {}),
+      ...(status
+        ? { status: status as "AVAILABLE" | "ASSIGNED" | "MAINTENANCE" | "INACTIVE" }
+        : excludeInactive
+        ? { status: { not: "INACTIVE" } }
+        : {}),
       ...(query
         ? {
             OR: [

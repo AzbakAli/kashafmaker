@@ -3,90 +3,229 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/app-layout";
-import { PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, Modal, ConfirmDialog, StatusDot } from "@/components/ui/card";
+import {
+  PageHeader, Card, CardContent, Badge, EmptyState, LoadingSpinner, Modal, ConfirmDialog, StatusDot,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { Plus, Search, Car, User, CheckCircle, XCircle, Calendar, Trash2, ArrowRight } from "lucide-react";
+import {
+  Plus, Search, Car, User, CheckCircle, XCircle, Trash2, ArrowRight,
+  Power, PowerOff,
+} from "lucide-react";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+
+interface Vehicle {
+  id: string;
+  vehicleType: string;
+  make: string;
+  model: string;
+  plateNumber: string;
+  registrationNumber: string | null;
+  capacity: number | null;
+  status: string;
+  color: string | null;
+  year: number | null;
+  assignments: Array<{
+    isActive: boolean;
+    driver: { id: string; name: string };
+  }>;
+}
+
+interface Driver {
+  id: string;
+  name: string;
+}
 
 export default function VehiclesPage() {
   const { toast } = useToast();
-  const [vehicles, setVehicles] = useState<Array<Record<string, unknown>>>([]);
-  const [drivers, setDrivers] = useState<Array<{ id: string; name: string }>>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+
+  // Add modal state
   const [modalOpen, setModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
-    vehicleType: "Van", make: "", model: "", plateNumber: "", registrationNumber: "",
-    vehicleId: "", year: "", color: "", capacity: "", status: "AVAILABLE", notes: "", driverId: "",
+    vehicleType: "Van",
+    make: "",
+    model: "",
+    plateNumber: "",
+    registrationNumber: "",
+    vehicleId: "",
+    year: "",
+    color: "",
+    capacity: "",
+    status: "AVAILABLE",
+    notes: "",
+    driverId: "",
   });
 
+  // Permanent Delete confirm dialog state
+  const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Status toggle (Disable / Enable) loading state
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
   const fetchData = () => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
+
     Promise.all([
-      fetch(`/api/vehicles?q=${debouncedSearch}`).then((r) => r.json()),
-      fetch("/api/drivers?status=ACTIVE").then((r) => r.json()),
-    ]).then(([v, d]) => {
-      setVehicles(Array.isArray(v) ? v : []);
-      setDrivers(Array.isArray(d) ? d : []);
-    }).finally(() => setLoading(false));
+      fetch(`/api/vehicles?${params.toString()}`, { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/drivers?status=ACTIVE", { cache: "no-store" }).then((r) => r.json()),
+    ])
+      .then(([v, d]) => {
+        setVehicles(Array.isArray(v) ? v : []);
+        setDrivers(Array.isArray(d) ? d : []);
+      })
+      .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchData(); }, [debouncedSearch]);
+  useEffect(() => {
+    fetchData();
+  }, [debouncedSearch, statusFilter]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/vehicles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        year: form.year ? Number(form.year) : undefined,
-        capacity: form.capacity ? Number(form.capacity) : undefined
-      }),
-    });
-    if (res.ok) {
-      toast("Vehicle created successfully", "success");
-      setModalOpen(false);
-      setForm({
-        vehicleType: "Van", make: "", model: "", plateNumber: "", registrationNumber: "",
-        vehicleId: "", year: "", color: "", capacity: "", status: "AVAILABLE", notes: "", driverId: "",
-      });
-      fetchData();
-    } else {
-      const err = await res.json();
-      toast(err.error || "Failed to create vehicle", "error");
-    }
-  };
-
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const deleteVehicle = async (vehicleId: string) => {
-    setDeleting(true);
+    if (creating) return;
+    setCreating(true);
     try {
-      const res = await fetch(`/api/vehicles/${vehicleId}`, { method: "DELETE" });
+      const res = await fetch("/api/vehicles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          year: form.year ? Number(form.year) : undefined,
+          capacity: form.capacity ? Number(form.capacity) : undefined,
+        }),
+      });
       if (res.ok) {
-        toast("Vehicle deleted successfully", "success");
+        toast("Vehicle created successfully", "success");
+        setModalOpen(false);
+        setForm({
+          vehicleType: "Van",
+          make: "",
+          model: "",
+          plateNumber: "",
+          registrationNumber: "",
+          vehicleId: "",
+          year: "",
+          color: "",
+          capacity: "",
+          status: "AVAILABLE",
+          notes: "",
+          driverId: "",
+        });
         fetchData();
       } else {
         const err = await res.json();
-        toast(err.error || "Failed to delete vehicle", "error");
+        toast(err.error || "Failed to create vehicle", "error");
       }
     } finally {
-      setDeleting(false);
-      setDeleteTarget(null);
+      setCreating(false);
     }
   };
 
-  const getStatusVariant = (status: string) => {
+  // Toggle Vehicle Active / Inactive (Disable / Enable)
+  const toggleVehicleStatus = async (vehicle: Vehicle) => {
+    const isCurrentlyInactive = vehicle.status === "INACTIVE";
+    const nextStatus = isCurrentlyInactive ? "AVAILABLE" : "INACTIVE";
+    const previous = [...vehicles];
+    setTogglingId(vehicle.id);
+
+    // Optimistic UI update in 0ms
+    setVehicles((prev) =>
+      prev.map((v) => (v.id === vehicle.id ? { ...v, status: nextStatus } : v))
+    );
+
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      if (res.ok) {
+        toast(
+          nextStatus === "INACTIVE"
+            ? "Vehicle disabled (will not show in rides)"
+            : "Vehicle enabled (available for rides)",
+          "success"
+        );
+      } else {
+        setVehicles(previous);
+        const err = await res.json().catch(() => ({}));
+        toast(err.error || "Failed to update vehicle status", "error");
+      }
+    } catch {
+      setVehicles(previous);
+      toast("Network error updating vehicle status", "error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  // Permanent Hard Delete
+  const handleConfirmPermanentDelete = async () => {
+    if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
+    const previous = [...vehicles];
+    setDeleting(true);
+
+    // Optimistic UI removal in 0ms
+    setVehicles((prev) => prev.filter((v) => v.id !== targetId));
+    setDeleteTarget(null);
+
+    try {
+      const res = await fetch(`/api/vehicles/${targetId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast("Vehicle permanently deleted from database", "success");
+      } else {
+        setVehicles(previous);
+        const err = await res.json().catch(() => ({}));
+        toast(err.error || "Failed to delete vehicle", "error");
+      }
+    } catch {
+      setVehicles(previous);
+      toast("Network error deleting vehicle", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
     switch (status) {
-      case "AVAILABLE": return "success";
-      case "ASSIGNED": return "info";
-      case "MAINTENANCE": return "warning";
-      case "INACTIVE": return "danger";
-      default: return "default";
+      case "AVAILABLE":
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+            <StatusDot status="success" /> Available
+          </span>
+        );
+      case "ASSIGNED":
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
+            <StatusDot status="info" /> Assigned
+          </span>
+        );
+      case "MAINTENANCE":
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+            <StatusDot status="warning" /> Maintenance
+          </span>
+        );
+      case "INACTIVE":
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-500">
+            <StatusDot status="warning" /> Disabled
+          </span>
+        );
     }
   };
 
@@ -94,226 +233,300 @@ export default function VehiclesPage() {
     <AppLayout>
       <PageHeader
         title="Vehicles"
-        description="Manage fleet vehicles and assignments"
+        description="Manage fleet vehicles, plate numbers, and driver assignments"
         action={
-          <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
-            <Plus className="h-4 w-4 mr-2" /> Add Vehicle
+          <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+            <Plus className="h-4 w-4 mr-1.5" /> Add Vehicle
           </Button>
         }
       />
 
-      <div className="mb-6 relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
-          placeholder="Search by plate number, make, or model..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+      {/* Filter and Search Bar */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-all"
+            placeholder="Search by plate number, make, model, or type…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          options={[
+            { value: "", label: "All Statuses" },
+            { value: "AVAILABLE", label: "Available Only" },
+            { value: "ASSIGNED", label: "Assigned to Driver" },
+            { value: "MAINTENANCE", label: "In Maintenance" },
+            { value: "INACTIVE", label: "Disabled / Inactive" },
+          ]}
+          className="sm:w-56"
         />
       </div>
 
-      <Card className="shadow-md">
+      <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex justify-center py-12">
+            <div className="flex justify-center py-16">
               <LoadingSpinner />
             </div>
           ) : vehicles.length === 0 ? (
             <EmptyState
               title="No vehicles found"
-              description={search ? "Try a different search term" : "Get started by adding your first vehicle"}
+              description={search || statusFilter ? "Try adjusting your search or filters" : "Add your first vehicle to get started"}
+              icon={<Car className="h-12 w-12 text-slate-300" />}
               action={
-                <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
-                  <Plus className="h-4 w-4 mr-2" /> Add Vehicle
+                <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                  <Plus className="h-4 w-4 mr-1.5" /> Add Vehicle
                 </Button>
               }
             />
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <Car className="h-4 w-4" /> Vehicle
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Make/Model</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4" /> Assigned Driver
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicles.map((v) => {
-                  const vehicle = v as {
-                    id: string;
-                    plateNumber: string;
-                    vehicleType: string;
-                    make: string;
-                    model: string;
-                    year?: number;
-                    color?: string;
-                    capacity?: number;
-                    status: string;
-                    assignments: Array<{ driver: { name: string } }>;
-                  };
-                  return (
-                    <tr key={vehicle.id} className="border-b border-slate-100 hover:bg-indigo-50/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <div>
-                          <div className="font-medium text-slate-900">
-                            <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded mr-2">
-                              {vehicle.plateNumber}
-                            </span>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/80">
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Vehicle
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Plate Number
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">
+                      Type / Cap
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">
+                      Assigned Driver
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {vehicles.map((v) => {
+                    const isInactive = v.status === "INACTIVE";
+                    return (
+                      <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs ${
+                              !isInactive
+                                ? "bg-indigo-50 border border-indigo-100 text-indigo-700"
+                                : "bg-slate-100 border border-slate-200 text-slate-400"
+                            }`}>
+                              <Car className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-900 text-sm">
+                                {v.make} {v.model}
+                              </p>
+                              {v.year && <p className="text-xs text-slate-400">{v.year}</p>}
+                            </div>
                           </div>
-                          <div className="text-xs text-slate-500 mt-1">
-                            {vehicle.year && <span>{vehicle.year} • </span>}
-                            {vehicle.color && <span>{vehicle.color}</span>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{vehicle.vehicleType}</td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <div className="font-medium text-slate-900">{vehicle.make} {vehicle.model}</div>
-                          {vehicle.capacity && (
-                            <div className="text-xs text-slate-500">{vehicle.capacity} seats</div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span className="font-mono text-xs bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md font-semibold border border-slate-200">
+                            {v.plateNumber}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-4 text-xs text-slate-600 hidden sm:table-cell">
+                          {v.vehicleType}
+                          {v.capacity && <span className="text-slate-400"> • {v.capacity} seats</span>}
+                        </td>
+
+                        <td className="px-5 py-4 hidden md:table-cell">
+                          {v.assignments?.[0]?.driver?.name ? (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium">
+                              <User className="h-3.5 w-3.5 text-indigo-500" />
+                              <span>{v.assignments[0].driver.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-xs">Unassigned</span>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {vehicle.assignments?.[0]?.driver?.name ? (
-                          <div className="flex items-center gap-2">
-                            <User className="h-3 w-3 text-slate-400" />
-                            <span className="text-slate-900">{vehicle.assignments[0].driver.name}</span>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {getStatusBadge(v.status)}
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* 1. Toggle Disable / Enable Button */}
+                            {!isInactive ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleVehicleStatus(v)}
+                                disabled={togglingId === v.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors shadow-sm"
+                                title="Disable this vehicle (will hide from rides without deleting)"
+                              >
+                                <PowerOff className="h-3.5 w-3.5" />
+                                <span>Disable</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleVehicleStatus(v)}
+                                disabled={togglingId === v.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors shadow-sm"
+                                title="Enable this vehicle (make available for rides)"
+                              >
+                                <Power className="h-3.5 w-3.5" />
+                                <span>Enable</span>
+                              </button>
+                            )}
+
+                            {/* 2. View Details */}
+                            <Link
+                              href={`/vehicles/${v.id}`}
+                              className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                            >
+                              <span>Open</span>
+                              <ArrowRight className="h-3 w-3" />
+                            </Link>
+
+                            {/* 3. Permanent Delete Button */}
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(v)}
+                              className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 transition-colors"
+                              title="Permanently delete vehicle from database"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={getStatusVariant(vehicle.status) as any} className="font-medium">
-                          {vehicle.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <Link
-                            href={`/vehicles/${vehicle.id}`}
-                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
-                          >
-                            View <ArrowRight className="h-3 w-3" />
-                          </Link>
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
-                            onClick={() => setDeleteTarget(vehicle.id as string)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add New Vehicle">
+      {/* Add New Vehicle Modal */}
+      <Modal open={modalOpen} onClose={() => !creating && setModalOpen(false)} title="Add New Vehicle" size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="Make"
+              label="Make *"
               value={form.make}
               onChange={(e) => setForm({ ...form, make: e.target.value })}
               required
-              placeholder="e.g., Toyota, Hyundai"
+              placeholder="e.g. Toyota, Hyundai"
             />
             <Input
-              label="Model"
+              label="Model *"
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
               required
-              placeholder="e.g., Camry, Staria"
+              placeholder="e.g. HiAce, Staria, Camry"
             />
           </div>
-          <Input
-            label="Plate Number"
-            value={form.plateNumber}
-            onChange={(e) => setForm({ ...form, plateNumber: e.target.value })}
-            required
-            placeholder="e.g., ABC-1234"
-          />
-          <Input
-            label="Vehicle Type"
-            value={form.vehicleType}
-            onChange={(e) => setForm({ ...form, vehicleType: e.target.value })}
-            placeholder="e.g., Van, Sedan, SUV"
-          />
-          <div className="grid grid-cols-3 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Plate Number *"
+              value={form.plateNumber}
+              onChange={(e) => setForm({ ...form, plateNumber: e.target.value })}
+              required
+              placeholder="e.g. ABC 1234"
+            />
+            <Select
+              label="Vehicle Type"
+              value={form.vehicleType}
+              onChange={(e) => setForm({ ...form, vehicleType: e.target.value })}
+              options={[
+                { value: "Van", label: "Van" },
+                { value: "Bus", label: "Bus" },
+                { value: "Sedan", label: "Sedan" },
+                { value: "SUV", label: "SUV" },
+              ]}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Input
               label="Year"
               type="number"
               value={form.year}
               onChange={(e) => setForm({ ...form, year: e.target.value })}
-              placeholder="2023"
+              placeholder="e.g. 2024"
             />
             <Input
               label="Color"
               value={form.color}
               onChange={(e) => setForm({ ...form, color: e.target.value })}
-              placeholder="White"
+              placeholder="e.g. White"
             />
             <Input
-              label="Capacity"
+              label="Passenger Capacity"
               type="number"
               value={form.capacity}
               onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-              placeholder="7"
+              placeholder="e.g. 14"
             />
           </div>
-          <Select
-            label="Assign Driver"
-            value={form.driverId}
-            onChange={(e) => setForm({ ...form, driverId: e.target.value })}
-            options={[
-              { value: "", label: "None (Assign later)" },
-              ...drivers.map((d) => ({ value: d.id, label: d.name }))
-            ]}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Assign Driver"
+              value={form.driverId}
+              onChange={(e) => setForm({ ...form, driverId: e.target.value })}
+              options={[
+                { value: "", label: "No driver assigned" },
+                ...drivers.map((d) => ({ value: d.id, label: d.name })),
+              ]}
+            />
+            <Select
+              label="Initial Status"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              options={[
+                { value: "AVAILABLE", label: "Available" },
+                { value: "MAINTENANCE", label: "Maintenance" },
+                { value: "INACTIVE", label: "Disabled / Inactive" },
+              ]}
+            />
+          </div>
+
+          <Textarea
+            label="Notes"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            placeholder="Vehicle notes, registration info..."
+            rows={2}
           />
-          <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setModalOpen(false)}
-              className="border-slate-300 hover:bg-slate-50"
-            >
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+            <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={creating}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">
-              Save Vehicle
+            <Button type="submit" disabled={creating} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]">
+              {creating ? "Saving…" : "Save Vehicle"}
             </Button>
           </div>
         </form>
       </Modal>
 
+      {/* Permanent Delete Confirm Dialog */}
       <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => !deleting && setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) deleteVehicle(deleteTarget);
-        }}
+        onConfirm={handleConfirmPermanentDelete}
         loading={deleting}
-        title="Delete Vehicle?"
-        message="This will permanently remove the vehicle and all assignments. This cannot be undone."
+        title={`Permanently Delete Vehicle "${deleteTarget?.make} ${deleteTarget?.model} (${deleteTarget?.plateNumber})"?`}
+        message={`Are you sure you want to permanently delete this vehicle from the database? This cannot be undone.\n\nTip: If you only want to temporarily prevent this vehicle from appearing in rides, click Cancel and choose "Disable" instead.`}
       />
     </AppLayout>
   );

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   );
   return NextResponse.json(drivers, {
     headers: {
-      "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
+      "Cache-Control": "no-store, must-revalidate",
     },
   });
 }

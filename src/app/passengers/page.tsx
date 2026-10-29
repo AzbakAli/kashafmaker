@@ -136,7 +136,20 @@ export default function PassengersPage() {
       // Optimistic update for edit
       if (editId) {
         setPassengers((prev) =>
-          prev.map((p) => (p.id === editId ? { ...p, ...payload, id: editId } : p))
+          prev.map((p) =>
+            p.id === editId
+              ? {
+                  ...p,
+                  fullName: form.fullName.trim(),
+                  passportNumber: form.passportNumber.trim() || null,
+                  nationality: form.nationality.trim() || null,
+                  gender: form.gender || null,
+                  visaType: form.visaType.trim() || null,
+                  iqamaNumber: form.iqamaNumber.trim() || null,
+                  phone: form.phone.trim() || null,
+                }
+              : p
+          )
         );
       }
 

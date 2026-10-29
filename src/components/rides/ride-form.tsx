@@ -16,7 +16,8 @@ import { applyVisaFieldsToPassengerForm } from "@/lib/visa/apply-fields";
 interface Driver {
   id: string;
   name: string;
-  assignments: Array<{ vehicle: { id: string; make: string; model: string; plateNumber: string } }>;
+  status: string;
+  assignments: Array<{ vehicle: { id: string; make: string; model: string; plateNumber: string; status?: string } }>;
 }
 
 interface Vehicle {
@@ -24,6 +25,8 @@ interface Vehicle {
   make: string;
   model: string;
   plateNumber: string;
+  status: string;
+  assignments?: Array<{ driver: { id: string; name: string; status?: string } }>;
 }
 
 interface Passenger {
@@ -96,27 +99,61 @@ export function RideForm({ rideId, initial }: RideFormProps) {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/drivers?status=ACTIVE").then((r) => r.json()),
-      fetch("/api/vehicles").then((r) => r.json()),
-      fetch("/api/passengers").then((r) => r.json()),
+      fetch("/api/drivers?status=ACTIVE", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/vehicles?excludeInactive=true", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/passengers", { cache: "no-store" }).then((r) => r.json()),
     ]).then(([d, v, p]) => {
-      setDrivers(Array.isArray(d) ? d : []);
-      setVehicles(Array.isArray(v) ? v : []);
+      // Strictly exclude any inactive drivers or vehicles
+      const activeDrivers = (Array.isArray(d) ? d : []).filter((driver: Driver) => driver.status === "ACTIVE");
+      const activeVehicles = (Array.isArray(v) ? v : []).filter((veh: Vehicle) => veh.status !== "INACTIVE");
+      setDrivers(activeDrivers);
+      setVehicles(activeVehicles);
       setAllPassengers(Array.isArray(p) ? p : []);
     });
   }, []);
 
-  const assignedVehicle = drivers.find((d) => d.id === form.driverId)?.assignments[0]?.vehicle;
+  const assignedVehicle = drivers.find((d) => d.id === form.driverId)?.assignments?.[0]?.vehicle;
+  const assignedDriver = vehicles.find((v) => v.id === form.vehicleId)?.assignments?.[0]?.driver;
 
   useEffect(() => {
     if (skipAutoVehicle.current) {
       skipAutoVehicle.current = false;
       return;
     }
-    if (assignedVehicle) {
+    if (assignedVehicle && !form.vehicleId && vehicles.some((v) => v.id === assignedVehicle.id)) {
       setForm((f) => ({ ...f, vehicleId: assignedVehicle.id }));
     }
-  }, [form.driverId, assignedVehicle?.id]);
+  }, [form.driverId, assignedVehicle?.id, vehicles]);
+
+  // Two-way automated sync: Selecting Driver auto-selects their assigned Vehicle
+  const handleDriverChange = (newDriverId: string) => {
+    setForm((prev) => {
+      const next = { ...prev, driverId: newDriverId };
+      if (newDriverId) {
+        const selDriver = drivers.find((d) => d.id === newDriverId);
+        const matchVehicle = selDriver?.assignments?.[0]?.vehicle;
+        if (matchVehicle && vehicles.some((v) => v.id === matchVehicle.id)) {
+          next.vehicleId = matchVehicle.id;
+        }
+      }
+      return next;
+    });
+  };
+
+  // Two-way automated sync: Selecting Vehicle auto-selects its assigned Driver
+  const handleVehicleChange = (newVehicleId: string) => {
+    setForm((prev) => {
+      const next = { ...prev, vehicleId: newVehicleId };
+      if (newVehicleId) {
+        const selVehicle = vehicles.find((v) => v.id === newVehicleId);
+        const matchDriver = selVehicle?.assignments?.[0]?.driver;
+        if (matchDriver && drivers.some((d) => d.id === matchDriver.id)) {
+          next.driverId = matchDriver.id;
+        }
+      }
+      return next;
+    });
+  };
 
   // Open modal to add a brand new passenger
   const handleOpenAddPassenger = () => {
@@ -339,15 +376,15 @@ export function RideForm({ rideId, initial }: RideFormProps) {
               <Select
                 label="Assign Driver"
                 value={form.driverId}
-                onChange={(e) => setForm({ ...form, driverId: e.target.value, vehicleId: "" })}
+                onChange={(e) => handleDriverChange(e.target.value)}
                 options={[
-                  { value: "", label: "Select assigned driver..." },
+                  { value: "", label: "Select active driver..." },
                   ...drivers.map((d) => ({ value: d.id, label: d.name })),
                 ]}
               />
-              {assignedVehicle && (
-                <p className="mt-1 text-xs text-emerald-600 font-medium">
-                  ✓ Vehicle auto-selected from driver&apos;s active assignment
+              {assignedVehicle && form.vehicleId === assignedVehicle.id && (
+                <p className="mt-1 text-xs text-emerald-600 font-medium flex items-center gap-1">
+                  ✓ Vehicle auto-selected from driver assignment
                 </p>
               )}
             </div>
@@ -356,15 +393,20 @@ export function RideForm({ rideId, initial }: RideFormProps) {
               <Select
                 label="Assign Vehicle"
                 value={form.vehicleId}
-                onChange={(e) => setForm({ ...form, vehicleId: e.target.value })}
+                onChange={(e) => handleVehicleChange(e.target.value)}
                 options={[
-                  { value: "", label: "Select vehicle..." },
+                  { value: "", label: "Select available vehicle..." },
                   ...vehicles.map((v) => ({
                     value: v.id,
                     label: `${v.make} ${v.model} (${v.plateNumber})`,
                   })),
                 ]}
               />
+              {assignedDriver && form.driverId === assignedDriver.id && (
+                <p className="mt-1 text-xs text-indigo-600 font-medium flex items-center gap-1">
+                  ✓ Driver auto-selected from vehicle assignment
+                </p>
+              )}
             </div>
           </div>
 
