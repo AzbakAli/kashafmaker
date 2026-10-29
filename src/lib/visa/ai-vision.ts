@@ -7,6 +7,9 @@ interface AiVisaPayload {
   visaType?: string;
 }
 
+// Fallback key is read from environment. Set GEMINI_API_KEY in your deployment
+// environment (Vercel, Railway, etc.) or in a local .env file.
+// Do NOT hardcode credentials here — GitHub push protection will block it.
 const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
 export async function aiExtractVisa(input: {
@@ -14,9 +17,17 @@ export async function aiExtractVisa(input: {
   mimeType?: string;
   fileName?: string;
 }): Promise<VisaExtractionResult | null> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) return null;
+  // In unit test environment, bypass external network requests unless explicitly enabled
+  if (process.env.NODE_ENV === "test" && !process.env.ENABLE_AI_IN_TESTS) {
+    return null;
+  }
 
+  const apiKey = (
+    process.env.GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY
+  )?.trim();
+
+  if (!apiKey) return null;
   try {
     let mimeType = (input.mimeType || "").toLowerCase();
     let imageBuffer = Buffer.from(input.buffer);
@@ -123,6 +134,7 @@ If any field is missing or cannot be found from the document, set its value to a
     fullName = fullName
       .replace(/^(?:the\s*name|thename|the|name)\b\s*[:.\-]?\s*/gi, "")
       .replace(/\s+\bthe\b$/gi, "")
+      .replace(/\s+/g, " ")
       .trim();
 
     let passportNumber = (payload.passportNumber || "").trim().toUpperCase();
@@ -131,7 +143,7 @@ If any field is missing or cannot be found from the document, set its value to a
     let nationality = (payload.nationality || "").trim();
     let visaType = (payload.visaType || "").trim();
 
-    // Standardize visaType
+    // Standardize visaType and strip unwanted agency / office suffixes
     const lowerVisa = visaType.toLowerCase();
     if (lowerVisa.includes("umrah") || lowerVisa.includes("عمرة")) {
       visaType = "Umrah";
@@ -145,6 +157,8 @@ If any field is missing or cannot be found from the document, set its value to a
       visaType = "Business Visit";
     } else if (lowerVisa.includes("transit") || lowerVisa.includes("مرور")) {
       visaType = "Transit";
+    } else {
+      visaType = visaType.split(/\b(?:office|company|agency|sponsor|journey)\b/i)[0].trim();
     }
 
     const fields: Record<VisaFieldKey, FieldResult> = {

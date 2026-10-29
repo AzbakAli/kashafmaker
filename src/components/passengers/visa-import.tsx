@@ -334,8 +334,8 @@ export function VisaImportButton({
                 <div className="space-y-4">
                   {current.status === "scanning" && (
                     <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Scanning… stays on your server, no external OCR.
+                      <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                      <span>Analyzing visa with AI Vision…</span>
                     </div>
                   )}
                   {current.status === "error" && (
@@ -350,10 +350,24 @@ export function VisaImportButton({
                     </div>
                   )}
                   {current.result && !current.confirmed && (
-                    <p className="text-xs text-slate-500">
-                      Extracted via {methodLabel(current.result.method)}. Highlighted fields need a
-                      manual check before you save the passenger.
-                    </p>
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        {current.result.method === "ai_vision" ? (
+                          <>
+                            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="font-semibold text-emerald-800">Extracted via AI Vision</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
+                            <span className="text-slate-700">Extracted via {methodLabel(current.result.method)}</span>
+                          </>
+                        )}
+                      </span>
+                      <span className="text-slate-500 text-[11px]">
+                        Review fields below
+                      </span>
+                    </div>
                   )}
 
                   {FIELD_META.map(({ key, label }) => {

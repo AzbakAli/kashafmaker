@@ -33,22 +33,20 @@ export async function extractVisaInformation(input: ExtractVisaInput): Promise<V
   }
 
   // 2. High-Accuracy AI Vision extraction (handles phone camera photos, screenshots, scanned PDFs)
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      const aiResult = await aiExtractVisa({
-        buffer: input.buffer,
-        mimeType: input.mimeType,
-        fileName: input.fileName,
-      });
-      if (aiResult && isExtractionComplete(aiResult)) {
-        return aiResult;
-      }
-      if (aiResult && (aiResult.fullName || aiResult.passportNumber)) {
-        return aiResult;
-      }
-    } catch {
-      // Fall through to local OCR
+  try {
+    const aiResult = await aiExtractVisa({
+      buffer: input.buffer,
+      mimeType: input.mimeType,
+      fileName: input.fileName,
+    });
+    if (aiResult && isExtractionComplete(aiResult)) {
+      return aiResult;
     }
+    if (aiResult && (aiResult.fullName || aiResult.passportNumber)) {
+      return aiResult;
+    }
+  } catch {
+    // Fall through to local OCR
   }
 
   // 3. Fallback to local PDF / OCR processing
