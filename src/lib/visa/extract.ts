@@ -17,70 +17,92 @@ export async function extractVisaInformation(input: ExtractVisaInput): Promise<V
     throw Object.assign(new Error(validation.error), { status: 400 });
   }
 
-  // 1. If PDF has selectable text, try fast native text extraction (instant ~50ms)
+  // 1. For PDFs: try fast native text extraction (~50ms)
+  // Also extract embedded images once here — reused by AI vision AND OCR fallback below.
+  let pdfText = "";
+  let pdfTextTokens: LayoutToken[] = [];
+  let pdfImages: Buffer[] = [];
+
   if (validation.kind === "pdf") {
+    // 1a. Text extraction
     try {
       const layout = await extractPdfLayout(input.buffer);
-      if (layout.text.trim()) {
-        const textResult = parseVisaFields({ text: layout.text, tokens: layout.tokens, fromOcr: false, method: "pdf_text" });
+      pdfText = layout.text;
+      pdfTextTokens = layout.tokens;
+      if (pdfText.trim()) {
+        const textResult = parseVisaFields({ text: pdfText, tokens: pdfTextTokens, fromOcr: false, method: "pdf_text" });
         if (isExtractionComplete(textResult)) {
           return { ...textResult, needsPageRender: false };
         }
       }
     } catch {
-      // Fall through to AI Vision / OCR
+      // Fall through — pdf.js couldn't parse (Acrobat-specific PDF)
+    }
+
+    // 1b. Extract embedded images once — shared by AI vision and OCR fallback
+    try {
+      pdfImages = await extractPdfEmbeddedImages(input.buffer);
+    } catch {
+      pdfImages = [];
     }
   }
 
-  // 2. High-Accuracy AI Vision extraction (handles phone camera photos, screenshots, scanned PDFs)
+  // 2. AI Vision extraction — fast path (2-3s when Gemini is healthy)
+  // Pass pre-extracted images for PDFs to avoid double-extracting
   try {
     const aiResult = await aiExtractVisa({
       buffer: input.buffer,
       mimeType: input.mimeType,
       fileName: input.fileName,
+      preExtractedImages: pdfImages.length > 0 ? pdfImages : undefined,
     });
-    if (aiResult && isExtractionComplete(aiResult)) {
-      return aiResult;
-    }
-    if (aiResult && (aiResult.fullName || aiResult.passportNumber)) {
+    if (aiResult && (isExtractionComplete(aiResult) || aiResult.fullName || aiResult.passportNumber)) {
       return aiResult;
     }
   } catch {
     // Fall through to local OCR
   }
 
-  // 3. Fallback to local PDF / OCR processing
+  // 3. Local OCR fallback (slow ~20s — only reached if Gemini fails)
   if (validation.kind === "pdf") {
-    return extractFromPdf(input.buffer);
+    return extractFromPdf(input.buffer, pdfText, pdfTextTokens, pdfImages);
   }
   return extractFromImage(Buffer.from(input.buffer));
 }
 
-async function extractFromPdf(data: Uint8Array): Promise<VisaExtractionResult> {
-  let layoutText = "";
-  let tokens: LayoutToken[] = [];
-  try {
-    const layout = await extractPdfLayout(data);
-    layoutText = layout.text;
-    tokens = layout.tokens;
-  } catch {
-    // PDF.js couldn't parse this PDF (e.g. Acrobat-specific features, XFA forms,
-    // compressed XRef streams). Try extracting embedded images and OCR instead of failing.
+async function extractFromPdf(
+  data: Uint8Array,
+  cachedText = "",
+  cachedTokens: LayoutToken[] = [],
+  cachedImages: Buffer[] = []
+): Promise<VisaExtractionResult> {
+  // Use cached text/tokens from step 1 if available
+  let layoutText = cachedText;
+  let tokens = cachedTokens;
+
+  if (!layoutText) {
     try {
-      const images = await extractPdfEmbeddedImages(data);
+      const layout = await extractPdfLayout(data);
+      layoutText = layout.text;
+      tokens = layout.tokens;
+    } catch {
+      // PDF.js couldn't parse — use cached images or give helpful message
+      const images = cachedImages.length > 0 ? cachedImages : [];
       if (images.length > 0) {
-        const ocr = await ocrImages(images);
-        if (ocr.text.trim()) {
-          return parseVisaFields({ text: ocr.text, tokens: ocr.tokens, fromOcr: true, method: "ocr" });
-        }
+        try {
+          const ocr = await ocrImages(images);
+          if (ocr.text.trim()) {
+            return parseVisaFields({ text: ocr.text, tokens: ocr.tokens, fromOcr: true, method: "ocr" });
+          }
+        } catch { /* fall through */ }
       }
-    } catch { /* fall through */ }
-    return {
-      ...emptyExtraction("ocr", [
-        "This PDF uses features that couldn't be parsed automatically. Try saving it as a standard PDF from Adobe Acrobat (File → Save As → PDF) or upload a photo of the visa instead.",
-      ]),
-      needsPageRender: true,
-    };
+      return {
+        ...emptyExtraction("ocr", [
+          "This PDF uses features that couldn't be parsed automatically. Try saving it as a standard PDF from Adobe Acrobat (File → Save As → PDF) or upload a photo of the visa instead.",
+        ]),
+        needsPageRender: true,
+      };
+    }
   }
 
   const textResult = parseVisaFields({ text: layoutText, tokens, fromOcr: false, method: "pdf_text" });
@@ -88,12 +110,8 @@ async function extractFromPdf(data: Uint8Array): Promise<VisaExtractionResult> {
     return { ...textResult, needsPageRender: false };
   }
 
-  let images: Buffer[] = [];
-  try {
-    images = await extractPdfEmbeddedImages(data);
-  } catch {
-    images = [];
-  }
+  // Use cached images from step 1 if available, otherwise extract now
+  const images = cachedImages.length > 0 ? cachedImages : await extractPdfEmbeddedImages(data).catch(() => []);
 
   if (!images.length) {
     return {

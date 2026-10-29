@@ -1,5 +1,4 @@
 import type { VisaExtractionResult, VisaFieldKey, FieldResult } from "./types";
-import { extractPdfEmbeddedImages } from "@/lib/pdf/extract-layout";
 
 interface AiVisaPayload {
   fullName?: string;
@@ -14,17 +13,15 @@ interface AiVisaPayload {
 // Model priority: confirmed working models first, then fallbacks.
 // Order matters — first model that responds OK wins.
 const GEMINI_MODELS = [
-  "gemini-3.8-flash",        // Best quality
-  "gemini-3.5-flash",        // Fast, accurate
-  "gemini-3.1-flash-lite",   // Lite — very reliable fallback
-  "gemini-3.5-flash-lite",   // Secondary lite fallback
-  "gemini-3.6-flash",        // Extra fallback
+  "gemini-3.8-flash",      // Best quality
+  "gemini-3.1-flash-lite", // Reliable lite fallback
 ];
 
 export async function aiExtractVisa(input: {
   buffer: Uint8Array;
   mimeType?: string;
   fileName?: string;
+  preExtractedImages?: Buffer[];
 }): Promise<VisaExtractionResult | null> {
   // In unit test environment, bypass external network requests unless explicitly enabled
   if (process.env.NODE_ENV === "test" && !process.env.ENABLE_AI_IN_TESTS) {
@@ -50,20 +47,10 @@ export async function aiExtractVisa(input: {
       else mimeType = "image/png";
     }
 
-    // For PDFs: extract embedded images and send the first image to Gemini.
-    // This avoids sending large/unsupported PDF binary blobs and gives better OCR accuracy.
-    if (mimeType === "application/pdf") {
-      try {
-        const images = await extractPdfEmbeddedImages(input.buffer);
-        if (images.length > 0) {
-          imageBuffer = Buffer.from(images[0]) as Buffer<ArrayBuffer>;
-          mimeType = "image/png";
-        }
-        // If no embedded images were found, fall back to sending PDF directly
-        // (works with Gemini 1.5+ which supports native PDF input)
-      } catch {
-        // Continue with raw PDF bytes as fallback
-      }
+    // If caller already extracted PDF images, use the first one directly — avoids double extraction
+    if (input.preExtractedImages && input.preExtractedImages.length > 0) {
+      imageBuffer = Buffer.from(input.preExtractedImages[0]) as Buffer<ArrayBuffer>;
+      mimeType = "image/png";
     }
 
     // For images, preprocess with sharp to autorotate, flatten white, and convert unsupported formats
