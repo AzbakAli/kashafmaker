@@ -11,18 +11,21 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
   Plus, Search, User, Phone, IdCard, Car, CheckCircle, XCircle, Trash2, ArrowRight,
-  Power, PowerOff, ShieldAlert,
+  Power, PowerOff, Edit,
 } from "lucide-react";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 interface Driver {
   id: string;
   name: string;
-  nameAr: string | null;
-  iqamaNumber: string | null;
-  phone: string | null;
-  nationality: string | null;
+  nameAr?: string | null;
+  iqamaNumber?: string | null;
+  phone?: string | null;
+  nationality?: string | null;
+  licenseNumber?: string | null;
+  licenseExpiry?: string | null;
   status: string;
+  notes?: string | null;
   assignments: Array<{ vehicle: { id: string; make: string; model: string; plateNumber: string } }>;
 }
 
@@ -33,6 +36,19 @@ interface Vehicle {
   plateNumber: string;
 }
 
+const EMPTY_DRIVER_FORM = {
+  name: "",
+  nameAr: "",
+  iqamaNumber: "",
+  phone: "",
+  nationality: "",
+  licenseNumber: "",
+  licenseExpiry: "",
+  status: "ACTIVE",
+  notes: "",
+  vehicleId: "",
+};
+
 export default function DriversPage() {
   const { toast } = useToast();
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -42,21 +58,11 @@ export default function DriversPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Add modal state
+  // Add / Edit modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    nameAr: "",
-    iqamaNumber: "",
-    phone: "",
-    nationality: "",
-    licenseNumber: "",
-    licenseExpiry: "",
-    status: "ACTIVE",
-    notes: "",
-    vehicleId: "",
-  });
+  const [editId, setEditId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(EMPTY_DRIVER_FORM);
 
   // Permanent Delete confirm dialog state
   const [deleteTarget, setDeleteTarget] = useState<Driver | null>(null);
@@ -85,38 +91,84 @@ export default function DriversPage() {
     fetchData();
   }, [debouncedSearch, statusFilter]);
 
+  const openCreateModal = () => {
+    setEditId(null);
+    setForm(EMPTY_DRIVER_FORM);
+    setModalOpen(true);
+  };
+
+  const openEditModal = async (driver: Driver) => {
+    setEditId(driver.id);
+    const assignedVehId = driver.assignments?.[0]?.vehicle?.id || "";
+    setForm({
+      name: driver.name || "",
+      nameAr: driver.nameAr || "",
+      iqamaNumber: driver.iqamaNumber || "",
+      phone: driver.phone || "",
+      nationality: driver.nationality || "",
+      licenseNumber: driver.licenseNumber || "",
+      licenseExpiry: driver.licenseExpiry ? String(driver.licenseExpiry).slice(0, 10) : "",
+      status: driver.status || "ACTIVE",
+      notes: driver.notes || "",
+      vehicleId: assignedVehId,
+    });
+    setModalOpen(true);
+
+    // Fetch full driver details in background to ensure all fields are populated
+    try {
+      const res = await fetch(`/api/drivers/${driver.id}`, { cache: "no-store" });
+      if (res.ok) {
+        const full = await res.json();
+        const activeVeh = (full.assignments || []).find((a: { isActive: boolean }) => a.isActive);
+        setForm({
+          name: full.name || "",
+          nameAr: full.nameAr || "",
+          iqamaNumber: full.iqamaNumber || "",
+          phone: full.phone || "",
+          nationality: full.nationality || "",
+          licenseNumber: full.licenseNumber || "",
+          licenseExpiry: full.licenseExpiry ? String(full.licenseExpiry).slice(0, 10) : "",
+          status: full.status || "ACTIVE",
+          notes: full.notes || "",
+          vehicleId: activeVeh?.vehicle?.id || "",
+        });
+      }
+    } catch {
+      // Keep initial prefill
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (creating) return;
-    setCreating(true);
+    if (saving) return;
+    setSaving(true);
     try {
-      const res = await fetch("/api/drivers", {
-        method: "POST",
+      const url = editId ? `/api/drivers/${editId}` : "/api/drivers";
+      const method = editId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+
       if (res.ok) {
-        toast("Driver created successfully", "success");
+        const savedDriver = await res.json();
+        if (editId) {
+          setDrivers((prev) => prev.map((d) => (d.id === editId ? { ...d, ...savedDriver } : d)));
+          toast("Driver updated successfully", "success");
+        } else {
+          setDrivers((prev) => [savedDriver, ...prev]);
+          toast("Driver created successfully", "success");
+        }
         setModalOpen(false);
-        setForm({
-          name: "",
-          nameAr: "",
-          iqamaNumber: "",
-          phone: "",
-          nationality: "",
-          licenseNumber: "",
-          licenseExpiry: "",
-          status: "ACTIVE",
-          notes: "",
-          vehicleId: "",
-        });
+        setForm(EMPTY_DRIVER_FORM);
         fetchData();
       } else {
         const err = await res.json();
-        toast(err.error || "Failed to create driver", "error");
+        toast(err.error || "Failed to save driver", "error");
       }
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   };
 
@@ -192,7 +244,7 @@ export default function DriversPage() {
         title="Drivers"
         description="Manage driver profiles, active fleet assignments, and availability"
         action={
-          <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+          <Button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
             <Plus className="h-4 w-4 mr-1.5" /> Add Driver
           </Button>
         }
@@ -233,7 +285,7 @@ export default function DriversPage() {
               description={search || statusFilter ? "Try adjusting your search or filters" : "Get started by adding your first driver"}
               icon={<User className="h-12 w-12 text-slate-300" />}
               action={
-                <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                <Button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                   <Plus className="h-4 w-4 mr-1.5" /> Add Driver
                 </Button>
               }
@@ -332,7 +384,18 @@ export default function DriversPage() {
 
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* 1. Toggle Disable / Enable Button */}
+                          {/* 1. Edit Driver Modal Button */}
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(d)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm"
+                            title="Edit driver details"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            <span>Edit</span>
+                          </button>
+
+                          {/* 2. Toggle Disable / Enable Button */}
                           {d.status === "ACTIVE" ? (
                             <button
                               type="button"
@@ -357,7 +420,7 @@ export default function DriversPage() {
                             </button>
                           )}
 
-                          {/* 2. View Details */}
+                          {/* 3. View Details */}
                           <Link
                             href={`/drivers/${d.id}`}
                             className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
@@ -366,7 +429,7 @@ export default function DriversPage() {
                             <ArrowRight className="h-3 w-3" />
                           </Link>
 
-                          {/* 3. Permanent Delete Button */}
+                          {/* 4. Permanent Delete Button */}
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(d)}
@@ -386,8 +449,13 @@ export default function DriversPage() {
         </CardContent>
       </Card>
 
-      {/* Add New Driver Modal */}
-      <Modal open={modalOpen} onClose={() => !creating && setModalOpen(false)} title="Add New Driver" size="lg">
+      {/* Add / Edit Driver Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={() => !saving && setModalOpen(false)}
+        title={editId ? "Edit Driver Details" : "Add New Driver"}
+        size="lg"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             label="Full Name *"
@@ -458,11 +526,11 @@ export default function DriversPage() {
             rows={2}
           />
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={creating}>
+            <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={creating} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]">
-              {creating ? "Saving…" : "Save Driver"}
+            <Button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]">
+              {saving ? "Saving…" : editId ? "Save Changes" : "Save Driver"}
             </Button>
           </div>
         </form>

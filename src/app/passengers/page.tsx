@@ -19,11 +19,11 @@ import { applyVisaFieldsToPassengerForm } from "@/lib/visa/apply-fields";
 interface Passenger {
   id: string;
   fullName: string;
-  passportNumber: string | null;
-  nationality: string | null;
-  gender: string | null;
-  visaType: string | null;
-  phone: string | null;
+  passportNumber?: string | null;
+  nationality?: string | null;
+  gender?: string | null;
+  visaType?: string | null;
+  phone?: string | null;
   iqamaNumber?: string | null;
 }
 

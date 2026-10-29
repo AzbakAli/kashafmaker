@@ -11,7 +11,7 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
   Plus, Search, Car, User, CheckCircle, XCircle, Trash2, ArrowRight,
-  Power, PowerOff,
+  Power, PowerOff, Edit,
 } from "lucide-react";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
@@ -21,11 +21,13 @@ interface Vehicle {
   make: string;
   model: string;
   plateNumber: string;
-  registrationNumber: string | null;
-  capacity: number | null;
+  registrationNumber?: string | null;
+  vehicleId?: string | null;
+  capacity?: number | null;
   status: string;
-  color: string | null;
-  year: number | null;
+  color?: string | null;
+  year?: number | null;
+  notes?: string | null;
   assignments: Array<{
     isActive: boolean;
     driver: { id: string; name: string };
@@ -37,6 +39,21 @@ interface Driver {
   name: string;
 }
 
+const EMPTY_VEHICLE_FORM = {
+  vehicleType: "Van",
+  make: "",
+  model: "",
+  plateNumber: "",
+  registrationNumber: "",
+  vehicleId: "",
+  year: "",
+  color: "",
+  capacity: "",
+  status: "AVAILABLE",
+  notes: "",
+  driverId: "",
+};
+
 export default function VehiclesPage() {
   const { toast } = useToast();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -46,23 +63,11 @@ export default function VehiclesPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Add modal state
+  // Add / Edit modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({
-    vehicleType: "Van",
-    make: "",
-    model: "",
-    plateNumber: "",
-    registrationNumber: "",
-    vehicleId: "",
-    year: "",
-    color: "",
-    capacity: "",
-    status: "AVAILABLE",
-    notes: "",
-    driverId: "",
-  });
+  const [editId, setEditId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(EMPTY_VEHICLE_FORM);
 
   // Permanent Delete confirm dialog state
   const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
@@ -91,44 +96,94 @@ export default function VehiclesPage() {
     fetchData();
   }, [debouncedSearch, statusFilter]);
 
+  const openCreateModal = () => {
+    setEditId(null);
+    setForm(EMPTY_VEHICLE_FORM);
+    setModalOpen(true);
+  };
+
+  const openEditModal = async (vehicle: Vehicle) => {
+    setEditId(vehicle.id);
+    const assignedDriverId = vehicle.assignments?.[0]?.driver?.id || "";
+    setForm({
+      vehicleType: vehicle.vehicleType || "Van",
+      make: vehicle.make || "",
+      model: vehicle.model || "",
+      plateNumber: vehicle.plateNumber || "",
+      registrationNumber: vehicle.registrationNumber || "",
+      vehicleId: vehicle.vehicleId || "",
+      year: vehicle.year ? String(vehicle.year) : "",
+      color: vehicle.color || "",
+      capacity: vehicle.capacity ? String(vehicle.capacity) : "",
+      status: vehicle.status || "AVAILABLE",
+      notes: vehicle.notes || "",
+      driverId: assignedDriverId,
+    });
+    setModalOpen(true);
+
+    // Fetch full vehicle details in background to ensure all fields are populated
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}`, { cache: "no-store" });
+      if (res.ok) {
+        const full = await res.json();
+        const activeDriver = (full.assignments || []).find((a: { isActive: boolean }) => a.isActive);
+        setForm({
+          vehicleType: full.vehicleType || "Van",
+          make: full.make || "",
+          model: full.model || "",
+          plateNumber: full.plateNumber || "",
+          registrationNumber: full.registrationNumber || "",
+          vehicleId: full.vehicleId || "",
+          year: full.year ? String(full.year) : "",
+          color: full.color || "",
+          capacity: full.capacity ? String(full.capacity) : "",
+          status: full.status || "AVAILABLE",
+          notes: full.notes || "",
+          driverId: activeDriver?.driver?.id || "",
+        });
+      }
+    } catch {
+      // Keep initial prefill
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (creating) return;
-    setCreating(true);
+    if (saving) return;
+    setSaving(true);
     try {
-      const res = await fetch("/api/vehicles", {
-        method: "POST",
+      const url = editId ? `/api/vehicles/${editId}` : "/api/vehicles";
+      const method = editId ? "PUT" : "POST";
+      const payload = {
+        ...form,
+        year: form.year ? Number(form.year) : undefined,
+        capacity: form.capacity ? Number(form.capacity) : undefined,
+      };
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          year: form.year ? Number(form.year) : undefined,
-          capacity: form.capacity ? Number(form.capacity) : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
+
       if (res.ok) {
-        toast("Vehicle created successfully", "success");
+        const savedVehicle = await res.json();
+        if (editId) {
+          setVehicles((prev) => prev.map((v) => (v.id === editId ? { ...v, ...savedVehicle } : v)));
+          toast("Vehicle updated successfully", "success");
+        } else {
+          setVehicles((prev) => [savedVehicle, ...prev]);
+          toast("Vehicle created successfully", "success");
+        }
         setModalOpen(false);
-        setForm({
-          vehicleType: "Van",
-          make: "",
-          model: "",
-          plateNumber: "",
-          registrationNumber: "",
-          vehicleId: "",
-          year: "",
-          color: "",
-          capacity: "",
-          status: "AVAILABLE",
-          notes: "",
-          driverId: "",
-        });
+        setForm(EMPTY_VEHICLE_FORM);
         fetchData();
       } else {
         const err = await res.json();
-        toast(err.error || "Failed to create vehicle", "error");
+        toast(err.error || "Failed to save vehicle", "error");
       }
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   };
 
@@ -235,7 +290,7 @@ export default function VehiclesPage() {
         title="Vehicles"
         description="Manage fleet vehicles, plate numbers, and driver assignments"
         action={
-          <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+          <Button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
             <Plus className="h-4 w-4 mr-1.5" /> Add Vehicle
           </Button>
         }
@@ -278,7 +333,7 @@ export default function VehiclesPage() {
               description={search || statusFilter ? "Try adjusting your search or filters" : "Add your first vehicle to get started"}
               icon={<Car className="h-12 w-12 text-slate-300" />}
               action={
-                <Button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                <Button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                   <Plus className="h-4 w-4 mr-1.5" /> Add Vehicle
                 </Button>
               }
@@ -359,7 +414,18 @@ export default function VehiclesPage() {
 
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* 1. Toggle Disable / Enable Button */}
+                            {/* 1. Edit Vehicle Modal Button */}
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(v)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm"
+                              title="Edit vehicle details"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                              <span>Edit</span>
+                            </button>
+
+                            {/* 2. Toggle Disable / Enable Button */}
                             {!isInactive ? (
                               <button
                                 type="button"
@@ -384,7 +450,7 @@ export default function VehiclesPage() {
                               </button>
                             )}
 
-                            {/* 2. View Details */}
+                            {/* 3. View Details */}
                             <Link
                               href={`/vehicles/${v.id}`}
                               className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
@@ -393,7 +459,7 @@ export default function VehiclesPage() {
                               <ArrowRight className="h-3 w-3" />
                             </Link>
 
-                            {/* 3. Permanent Delete Button */}
+                            {/* 4. Permanent Delete Button */}
                             <button
                               type="button"
                               onClick={() => setDeleteTarget(v)}
@@ -414,8 +480,13 @@ export default function VehiclesPage() {
         </CardContent>
       </Card>
 
-      {/* Add New Vehicle Modal */}
-      <Modal open={modalOpen} onClose={() => !creating && setModalOpen(false)} title="Add New Vehicle" size="lg">
+      {/* Add / Edit Vehicle Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={() => !saving && setModalOpen(false)}
+        title={editId ? "Edit Vehicle Details" : "Add New Vehicle"}
+        size="lg"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
@@ -489,14 +560,30 @@ export default function VehiclesPage() {
               ]}
             />
             <Select
-              label="Initial Status"
+              label="Status"
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
               options={[
                 { value: "AVAILABLE", label: "Available" },
+                { value: "ASSIGNED", label: "Assigned" },
                 { value: "MAINTENANCE", label: "Maintenance" },
                 { value: "INACTIVE", label: "Disabled / Inactive" },
               ]}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Registration Number"
+              value={form.registrationNumber}
+              onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })}
+              placeholder="Vehicle registration ID"
+            />
+            <Input
+              label="Vehicle Serial / Fleet ID"
+              value={form.vehicleId}
+              onChange={(e) => setForm({ ...form, vehicleId: e.target.value })}
+              placeholder="Internal fleet reference"
             />
           </div>
 
@@ -509,11 +596,11 @@ export default function VehiclesPage() {
           />
 
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={creating}>
+            <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={creating} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]">
-              {creating ? "Saving…" : "Save Vehicle"}
+            <Button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]">
+              {saving ? "Saving…" : editId ? "Save Changes" : "Save Vehicle"}
             </Button>
           </div>
         </form>
