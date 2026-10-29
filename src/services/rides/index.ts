@@ -335,9 +335,23 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     return cachedDashboardStats.data;
   }
 
-  const result = await fetchDashboardStats();
-  // Cache stats for 15 seconds to prevent hammering DB on frequent page navigations
-  cachedDashboardStats = { data: result, expiresAt: now + 15000 };
-
-  return result;
+  try {
+    const result = await fetchDashboardStats();
+    // Cache stats for 15 seconds to prevent hammering DB on frequent page navigations
+    cachedDashboardStats = { data: result, expiresAt: now + 15000 };
+    return result;
+  } catch (error) {
+    console.error("fetchDashboardStats error:", error);
+    return {
+      totalRides: 0,
+      todayRides: 0,
+      upcomingRides: 0,
+      completedRides: 0,
+      totalDrivers: 0,
+      totalVehicles: 0,
+      totalPassengers: 0,
+      kashafDocuments: 0,
+      todayRidesList: [],
+    };
+  }
 }

@@ -78,6 +78,18 @@ const statusDot = (status: string): "success" | "info" | "danger" | "warning" =>
   }
 };
 
+const DEFAULT_DASHBOARD_DATA: DashboardData = {
+  totalRides: 0,
+  todayRides: 0,
+  upcomingRides: 0,
+  completedRides: 0,
+  totalDrivers: 0,
+  totalVehicles: 0,
+  totalPassengers: 0,
+  kashafDocuments: 0,
+  todayRidesList: [],
+};
+
 export function DashboardContent({ initialData }: { initialData?: DashboardData }) {
   const { data: session } = useSession();
   const [data, setData] = useState<DashboardData | null>(initialData ?? null);
@@ -90,7 +102,14 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
     fetch("/api/dashboard")
       .then((r) => r.json())
       .then((payload) => {
-        if (payload && typeof payload.totalRides === "number") setData(payload);
+        if (payload && typeof payload.totalRides === "number") {
+          setData(payload);
+        } else {
+          setData(DEFAULT_DASHBOARD_DATA);
+        }
+      })
+      .catch(() => {
+        setData(DEFAULT_DASHBOARD_DATA);
       })
       .finally(() => setLoading(false));
   }, [initialData]);
@@ -109,7 +128,7 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
     );
   }
 
-  if (!data) return null;
+  const current = data || DEFAULT_DASHBOARD_DATA;
 
   return (
     <div className="space-y-6">
@@ -137,16 +156,16 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Rides"
-          value={data.totalRides}
+          value={current.totalRides}
           icon={Car}
-          trend={`${data.todayRides} today`}
+          trend={`${current.todayRides} today`}
           href="/rides"
           actionLabel="View all rides"
           color="indigo"
         />
         <StatCard
           title="Upcoming"
-          value={data.upcomingRides}
+          value={current.upcomingRides}
           icon={Clock}
           trend="Scheduled"
           href="/rides"
@@ -154,7 +173,7 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
         />
         <StatCard
           title="Active Drivers"
-          value={data.totalDrivers}
+          value={current.totalDrivers}
           icon={Users}
           href="/drivers"
           actionLabel="Manage drivers"
@@ -162,7 +181,7 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
         />
         <StatCard
           title="Vehicles"
-          value={data.totalVehicles}
+          value={current.totalVehicles}
           icon={Truck}
           href="/vehicles"
           actionLabel="Manage fleet"
@@ -174,20 +193,20 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Passengers"
-          value={data.totalPassengers}
+          value={current.totalPassengers}
           icon={UserCircle}
           href="/passengers"
           color="violet"
         />
         <StatCard
           title="Completed Rides"
-          value={data.completedRides}
+          value={current.completedRides}
           icon={CheckCircle2}
           color="emerald"
         />
         <StatCard
           title="Kashaf PDFs"
-          value={data.kashafDocuments}
+          value={current.kashafDocuments}
           icon={FileText}
           href="/documents"
           actionLabel="View documents"
@@ -222,7 +241,7 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
           </Link>
         </CardHeader>
         <CardContent className="p-0">
-          {data.todayRidesList.length === 0 ? (
+          {current.todayRidesList.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Calendar className="h-10 w-10 text-slate-200 mb-3" />
               <p className="text-sm font-medium text-slate-500">No rides scheduled today</p>
@@ -256,7 +275,7 @@ export function DashboardContent({ initialData }: { initialData?: DashboardData 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {data.todayRidesList.map((ride) => {
+                  {current.todayRidesList.map((ride) => {
                     const hasKashaf = ride.kashafDocuments.length > 0;
                     const kashafDocId = ride.kashafDocuments[0]?.id;
                     return (
