@@ -31,6 +31,8 @@ export async function extractPdfLayout(data: Uint8Array): Promise<PdfLayout> {
     isEvalSupported: false,
     useSystemFonts: true,
     useWorkerFetch: false,
+    stopAtErrors: false,
+    password: "",
   }).promise;
 
   const tokens: LayoutToken[] = [];
@@ -79,6 +81,8 @@ export async function extractPdfEmbeddedImages(data: Uint8Array): Promise<Buffer
     isEvalSupported: false,
     useSystemFonts: true,
     useWorkerFetch: false,
+    stopAtErrors: false,
+    password: "",
   }).promise;
 
   const images: Buffer[] = [];
@@ -173,7 +177,11 @@ async function extractDirectPdfImages(data: Uint8Array): Promise<Buffer[]> {
     const { PDFDocument, PDFName, PDFArray } = await import("pdf-lib");
     const sharp = (await import("sharp")).default;
     const { inflateSync } = await import("node:zlib");
-    const doc = await PDFDocument.load(data, { ignoreEncryption: true });
+    const doc = await PDFDocument.load(data, {
+      ignoreEncryption: true,
+      updateMetadata: false,
+      throwOnInvalidObject: false,
+    });
     const images: Buffer[] = [];
     const maxDimension = 2400;
 

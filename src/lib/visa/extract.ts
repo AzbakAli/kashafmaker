@@ -64,7 +64,23 @@ async function extractFromPdf(data: Uint8Array): Promise<VisaExtractionResult> {
     layoutText = layout.text;
     tokens = layout.tokens;
   } catch {
-    throw Object.assign(new Error("The PDF could not be read. The file may be corrupt."), { status: 400 });
+    // PDF.js couldn't parse this PDF (e.g. Acrobat-specific features, XFA forms,
+    // compressed XRef streams). Try extracting embedded images and OCR instead of failing.
+    try {
+      const images = await extractPdfEmbeddedImages(data);
+      if (images.length > 0) {
+        const ocr = await ocrImages(images);
+        if (ocr.text.trim()) {
+          return parseVisaFields({ text: ocr.text, tokens: ocr.tokens, fromOcr: true, method: "ocr" });
+        }
+      }
+    } catch { /* fall through */ }
+    return {
+      ...emptyExtraction("ocr", [
+        "This PDF uses features that couldn't be parsed automatically. Try saving it as a standard PDF from Adobe Acrobat (File → Save As → PDF) or upload a photo of the visa instead.",
+      ]),
+      needsPageRender: true,
+    };
   }
 
   const textResult = parseVisaFields({ text: layoutText, tokens, fromOcr: false, method: "pdf_text" });

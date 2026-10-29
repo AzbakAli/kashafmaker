@@ -85,6 +85,8 @@ export async function extractPdfText(data: Uint8Array): Promise<string> {
     isEvalSupported: false,
     useSystemFonts: true,
     useWorkerFetch: false,
+    stopAtErrors: false,
+    password: "",
   }).promise;
 
   const pages: string[] = [];
