@@ -187,15 +187,18 @@ export function RideForm({ rideId, initial }: RideFormProps) {
     try {
       const url = editingPassengerId ? `/api/passengers/${editingPassengerId}` : "/api/passengers";
       const method = editingPassengerId ? "PUT" : "POST";
-      const payload = {
+      const payload: Record<string, string | undefined> = {
         fullName: passengerForm.fullName.trim(),
         passportNumber: passengerForm.passportNumber.trim() || undefined,
         nationality: passengerForm.nationality.trim() || undefined,
-        gender: passengerForm.gender || undefined,
         visaType: passengerForm.visaType.trim() || undefined,
-        iqamaNumber: passengerForm.iqamaNumber.trim() || undefined,
-        phone: passengerForm.phone.trim() || undefined,
       };
+
+      if (editingPassengerId) {
+        if (passengerForm.gender) payload.gender = passengerForm.gender;
+        if (passengerForm.iqamaNumber) payload.iqamaNumber = passengerForm.iqamaNumber;
+        if (passengerForm.phone) payload.phone = passengerForm.phone;
+      }
 
       const res = await fetch(url, {
         method,
@@ -222,8 +225,14 @@ export function RideForm({ rideId, initial }: RideFormProps) {
         toast("Passenger updated successfully", "success");
       } else {
         // Add to selected list and all list
-        setSelectedPassengers((prev) => [...prev, savedPassenger]);
-        setAllPassengers((prev) => [...prev, savedPassenger]);
+        setSelectedPassengers((prev) => {
+          const exists = prev.some((p) => p.id === savedPassenger.id);
+          return exists ? prev.map((p) => (p.id === savedPassenger.id ? savedPassenger : p)) : [...prev, savedPassenger];
+        });
+        setAllPassengers((prev) => {
+          const exists = prev.some((p) => p.id === savedPassenger.id);
+          return exists ? prev.map((p) => (p.id === savedPassenger.id ? savedPassenger : p)) : [...prev, savedPassenger];
+        });
         toast("Passenger added to ride", "success");
       }
 
@@ -316,7 +325,8 @@ export function RideForm({ rideId, initial }: RideFormProps) {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <>
+      <form onSubmit={handleSubmit} className="space-y-6">
       {/* 1. RIDE DETAILS CARD */}
       <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
         <CardHeader className="bg-slate-50/70 border-b border-slate-100 py-4 px-6">
@@ -630,92 +640,65 @@ export function RideForm({ rideId, initial }: RideFormProps) {
           </Button>
         </div>
       </div>
-
-      {/* Add / Edit Passenger Modal (NO NOTES) */}
-      <Modal
-        open={passengerModalOpen}
-        onClose={() => !savingPassenger && setPassengerModalOpen(false)}
-        title={editingPassengerId ? "Edit Passenger Details" : "Add Passenger to Ride"}
-        size="lg"
-      >
-        <form onSubmit={handleSavePassenger} className="space-y-4">
-          <Input
-            label="Full Name *"
-            value={passengerForm.fullName}
-            onChange={(e) => setPassengerForm({ ...passengerForm, fullName: e.target.value })}
-            required
-            placeholder="e.g. MOHAMMED KHALID AL-HARBI"
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Passport Number"
-              value={passengerForm.passportNumber}
-              onChange={(e) => setPassengerForm({ ...passengerForm, passportNumber: e.target.value })}
-              placeholder="e.g. A12345678"
-            />
-            <Input
-              label="Nationality"
-              value={passengerForm.nationality}
-              onChange={(e) => setPassengerForm({ ...passengerForm, nationality: e.target.value })}
-              placeholder="e.g. Saudi Arabia, Pakistan"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select
-              label="Gender"
-              value={passengerForm.gender}
-              onChange={(e) => setPassengerForm({ ...passengerForm, gender: e.target.value })}
-              options={[
-                { value: "", label: "Select gender..." },
-                { value: "MALE", label: "Male" },
-                { value: "FEMALE", label: "Female" },
-                { value: "OTHER", label: "Other" },
-              ]}
-            />
-            <Input
-              label="Visa Type"
-              value={passengerForm.visaType}
-              onChange={(e) => setPassengerForm({ ...passengerForm, visaType: e.target.value })}
-              placeholder="e.g. Umrah, Tourism"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Iqama Number"
-              value={passengerForm.iqamaNumber}
-              onChange={(e) => setPassengerForm({ ...passengerForm, iqamaNumber: e.target.value })}
-              placeholder="10-digit Saudi ID"
-            />
-            <Input
-              label="Phone Number"
-              value={passengerForm.phone}
-              onChange={(e) => setPassengerForm({ ...passengerForm, phone: e.target.value })}
-              placeholder="+966 5X XXX XXXX"
-            />
-          </div>
-
-          <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPassengerModalOpen(false)}
-              disabled={savingPassenger}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={savingPassenger}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]"
-            >
-              {savingPassenger ? "Saving…" : editingPassengerId ? "Save Changes" : "Add to Ride"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
     </form>
+
+    {/* Add / Edit Passenger Modal */}
+    <Modal
+      open={passengerModalOpen}
+      onClose={() => !savingPassenger && setPassengerModalOpen(false)}
+      title={editingPassengerId ? "Edit Passenger Details" : "Add Passenger to Ride"}
+      size="lg"
+    >
+      <form onSubmit={handleSavePassenger} className="space-y-4">
+        <Input
+          label="Full Name *"
+          value={passengerForm.fullName}
+          onChange={(e) => setPassengerForm({ ...passengerForm, fullName: e.target.value })}
+          required
+          placeholder="e.g. MOHAMMED KHALID AL-HARBI"
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label="Passport Number"
+            value={passengerForm.passportNumber}
+            onChange={(e) => setPassengerForm({ ...passengerForm, passportNumber: e.target.value })}
+            placeholder="e.g. A12345678"
+          />
+          <Input
+            label="Nationality"
+            value={passengerForm.nationality}
+            onChange={(e) => setPassengerForm({ ...passengerForm, nationality: e.target.value })}
+            placeholder="e.g. Saudi Arabia, Pakistan"
+          />
+        </div>
+
+        <Input
+          label="Visa Type"
+          value={passengerForm.visaType}
+          onChange={(e) => setPassengerForm({ ...passengerForm, visaType: e.target.value })}
+          placeholder="e.g. Umrah, Tourism"
+        />
+
+        <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setPassengerModalOpen(false)}
+            disabled={savingPassenger}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={savingPassenger}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px]"
+          >
+            {savingPassenger ? "Saving…" : editingPassengerId ? "Save Changes" : "Add to Ride"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  </>
   );
 }

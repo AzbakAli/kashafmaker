@@ -13,14 +13,10 @@ interface AiVisaPayload {
 // Do NOT hardcode credentials here — GitHub push protection will block it.
 // Model priority: fastest high-accuracy models first, followed by fallbacks.
 // If any model is experiencing a temporary overload spike, it fails over immediately.
+// Fast Gemini fallbacks only if Groq is unavailable
 const GEMINI_MODELS = [
-  "gemini-3.5-flash",       // Original fast primary model (2-3s)
-  "gemini-3.5-flash-lite",  // Ultra-fast lightweight model
-  "gemini-3.8-flash",       // Newest generation
-  "gemini-3.1-flash-lite",  // Reliable fallback
-  "gemini-3.6-flash",       // Fast intermediate model
-  "gemini-3.7-flash",       // High performance fallback
-  "gemini-flash-latest",    // Alias to latest stable flash
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
 ];
 
 export async function aiExtractVisa(input: {
@@ -34,12 +30,17 @@ export async function aiExtractVisa(input: {
     return null;
   }
 
-  const apiKey = (
+  const groqKey = (
+    process.env.GROQ_API_KEY ||
+    process.env.NEXT_PUBLIC_GROQ_API_KEY
+  )?.trim();
+
+  const geminiKey = (
     process.env.GEMINI_API_KEY ||
     process.env.NEXT_PUBLIC_GEMINI_API_KEY
   )?.trim();
 
-  if (!apiKey) return null;
+  if (!groqKey && !geminiKey) return null;
   try {
     let mimeType = (input.mimeType || "").toLowerCase();
     let imageBuffer = Buffer.from(input.buffer);
@@ -100,53 +101,113 @@ If any field is missing or cannot be found from the document, set its value to a
     let payload: AiVisaPayload | null = null;
     let lastError = "";
 
-    for (const model of GEMINI_MODELS) {
+    // 1. Primary: Groq Vision (Qwen 3.8 27B Vision — ultra-fast ~0.5s, no overload, high throughput)
+    if (groqKey && mimeType.startsWith("image/")) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000); // 10s per model — fail fast, try next
+        const timeout = setTimeout(() => controller.abort(), 6000); // 6s timeout for Groq
 
-        const response = await fetch(url, {
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${groqKey}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
-            contents: [
+            model: "qwen/qwen3.8-27b",
+            messages: [
               {
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: mimeType, data: base64Data } },
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${mimeType};base64,${base64Data}`,
+                    },
+                  },
                 ],
               },
             ],
-            generationConfig: {
-              response_mime_type: "application/json",
-              temperature: 0.1,
-            },
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+            max_tokens: 300,
           }),
         });
 
         clearTimeout(timeout);
 
-        if (!response.ok) {
-          const errBody = await response.text().catch(() => response.statusText);
-          lastError = `${model} HTTP ${response.status}: ${errBody.slice(0, 200)}`;
-          console.warn("[ai-vision] model failed:", lastError);
-          continue;
-        }
-
-        const data = await response.json();
-        const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawJsonText) {
-          payload = JSON.parse(rawJsonText);
-          if (payload && (payload.fullName || payload.passportNumber)) {
-            break;
+        if (groqRes.ok) {
+          const data = await groqRes.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            const parsed = JSON.parse(content);
+            if (parsed && (parsed.fullName || parsed.passportNumber)) {
+              payload = parsed;
+            }
           }
+        } else {
+          const errBody = await groqRes.text().catch(() => groqRes.statusText);
+          lastError = `Groq HTTP ${groqRes.status}: ${errBody.slice(0, 150)}`;
+          console.warn("[ai-vision] Groq failed, falling back to Gemini:", lastError);
         }
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        console.warn("[ai-vision] model error:", model, lastError);
-        // Try next model if this one times out or errors
+        console.warn("[ai-vision] Groq error, falling back to Gemini:", lastError);
+      }
+    }
+
+    // 2. Secondary fallback: Google Gemini
+    if ((!payload || (!payload.fullName && !payload.passportNumber)) && geminiKey) {
+      for (const model of GEMINI_MODELS) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3500); // 3.5s per model fallback — fail fast, never hang
+
+          const response = await fetch(url, {
+            method: "POST",
+            signal: controller.signal,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    { inline_data: { mime_type: mimeType, data: base64Data } },
+                  ],
+                },
+              ],
+              generationConfig: {
+                response_mime_type: "application/json",
+                temperature: 0.1,
+              },
+            }),
+          });
+
+          clearTimeout(timeout);
+
+          if (!response.ok) {
+            const errBody = await response.text().catch(() => response.statusText);
+            lastError = `${model} HTTP ${response.status}: ${errBody.slice(0, 200)}`;
+            console.warn("[ai-vision] Gemini model failed:", lastError);
+            continue;
+          }
+
+          const data = await response.json();
+          const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawJsonText) {
+            payload = JSON.parse(rawJsonText);
+            if (payload && (payload.fullName || payload.passportNumber)) {
+              break;
+            }
+          }
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+          console.warn("[ai-vision] Gemini model error:", model, lastError);
+          // Try next model if this one times out or errors
+        }
       }
     }
 
