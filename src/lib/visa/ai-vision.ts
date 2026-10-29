@@ -11,11 +11,11 @@ interface AiVisaPayload {
 // Fallback key is read from environment. Set GEMINI_API_KEY in your deployment
 // environment (Vercel, Railway, etc.) or in a local .env file.
 // Do NOT hardcode credentials here — GitHub push protection will block it.
-// Model priority: fastest accurate model first, stable fallbacks after.
+// Model priority: try newest first, fall back to lite/older on quota errors.
 const GEMINI_MODELS = [
-  "gemini-2.5-flash",      // Best multimodal accuracy, fast
-  "gemini-2.0-flash",      // Solid fallback
-  "gemini-1.5-flash",      // Stable, widely available
+  "gemini-3.8-flash",       // Newest, working confirmed
+  "gemini-3.5-flash",       // Fallback (may hit quota on free tier)
+  "gemini-3.5-flash-lite",  // Last resort lite fallback
 ];
 
 export async function aiExtractVisa(input: {
