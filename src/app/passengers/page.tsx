@@ -55,7 +55,7 @@ export default function PassengersPage() {
   const [deleting, setDeleting] = useState(false);
 
   const fetchData = () => {
-    fetch(`/api/passengers?q=${debouncedSearch}`)
+    fetch(`/api/passengers?q=${debouncedSearch}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => setPassengers(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
@@ -133,6 +133,13 @@ export default function PassengersPage() {
         phone: form.phone.trim() || undefined,
       };
 
+      // Optimistic update for edit
+      if (editId) {
+        setPassengers((prev) =>
+          prev.map((p) => (p.id === editId ? { ...p, ...payload, id: editId } : p))
+        );
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -140,15 +147,23 @@ export default function PassengersPage() {
       });
 
       if (res.ok) {
+        const saved = await res.json();
+        setPassengers((prev) => {
+          if (editId) {
+            return prev.map((p) => (p.id === editId ? saved : p));
+          }
+          return [saved, ...prev];
+        });
         toast(editId ? "Passenger updated successfully" : "Passenger added successfully", "success");
         setModalOpen(false);
-        fetchData();
       } else {
         const err = await res.json().catch(() => ({}));
         toast(err.error || "Failed to save passenger", "error");
+        fetchData();
       }
     } catch (error) {
       toast(error instanceof Error ? error.message : "Network error", "error");
+      fetchData();
     } finally {
       setSaving(false);
     }
@@ -156,19 +171,26 @@ export default function PassengersPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    setDeleting(true);
+    const targetId = deleteTarget;
+    const previous = [...passengers];
+
+    // Optimistic removal: instantly disappears from table (0ms delay)
+    setPassengers((prev) => prev.filter((p) => p.id !== targetId));
+    setDeleteTarget(null);
+
     try {
-      const res = await fetch(`/api/passengers/${deleteTarget}`, { method: "DELETE" });
+      const res = await fetch(`/api/passengers/${targetId}`, { method: "DELETE" });
       if (res.ok) {
         toast("Passenger deleted", "success");
-        fetchData();
       } else {
-        const err = await res.json();
+        // Rollback on failure
+        setPassengers(previous);
+        const err = await res.json().catch(() => ({}));
         toast(err.error || "Failed to delete", "error");
       }
-    } finally {
-      setDeleting(false);
-      setDeleteTarget(null);
+    } catch {
+      setPassengers(previous);
+      toast("Network error deleting passenger", "error");
     }
   };
 
