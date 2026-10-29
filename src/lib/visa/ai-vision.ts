@@ -1,4 +1,5 @@
 import type { VisaExtractionResult, VisaFieldKey, FieldResult } from "./types";
+import { extractPdfEmbeddedImages } from "@/lib/pdf/extract-layout";
 
 interface AiVisaPayload {
   fullName?: string;
@@ -10,7 +11,12 @@ interface AiVisaPayload {
 // Fallback key is read from environment. Set GEMINI_API_KEY in your deployment
 // environment (Vercel, Railway, etc.) or in a local .env file.
 // Do NOT hardcode credentials here — GitHub push protection will block it.
-const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
+// Model priority: fastest accurate model first, stable fallbacks after.
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",      // Best multimodal accuracy, fast
+  "gemini-2.0-flash",      // Solid fallback
+  "gemini-1.5-flash",      // Stable, widely available
+];
 
 export async function aiExtractVisa(input: {
   buffer: Uint8Array;
@@ -39,6 +45,22 @@ export async function aiExtractVisa(input: {
       else if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
       else if (ext === "webp") mimeType = "image/webp";
       else mimeType = "image/png";
+    }
+
+    // For PDFs: extract embedded images and send the first image to Gemini.
+    // This avoids sending large/unsupported PDF binary blobs and gives better OCR accuracy.
+    if (mimeType === "application/pdf") {
+      try {
+        const images = await extractPdfEmbeddedImages(input.buffer);
+        if (images.length > 0) {
+          imageBuffer = Buffer.from(images[0]) as Buffer<ArrayBuffer>;
+          mimeType = "image/png";
+        }
+        // If no embedded images were found, fall back to sending PDF directly
+        // (works with Gemini 1.5+ which supports native PDF input)
+      } catch {
+        // Continue with raw PDF bytes as fallback
+      }
     }
 
     // For images, preprocess with sharp to autorotate, flatten white, and convert unsupported formats
@@ -79,12 +101,13 @@ Extract the traveler/passenger information into a valid JSON object with exactly
 If any field is missing or cannot be found from the document, set its value to an empty string "".`;
 
     let payload: AiVisaPayload | null = null;
+    let lastError = "";
 
     for (const model of GEMINI_MODELS) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 18000);
+        const timeout = setTimeout(() => controller.abort(), 30000); // 30s per model
 
         const response = await fetch(url, {
           method: "POST",
@@ -109,6 +132,9 @@ If any field is missing or cannot be found from the document, set its value to a
         clearTimeout(timeout);
 
         if (!response.ok) {
+          const errBody = await response.text().catch(() => response.statusText);
+          lastError = `${model} HTTP ${response.status}: ${errBody.slice(0, 200)}`;
+          console.warn("[ai-vision] model failed:", lastError);
           continue;
         }
 
@@ -120,12 +146,15 @@ If any field is missing or cannot be found from the document, set its value to a
             break;
           }
         }
-      } catch {
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        console.warn("[ai-vision] model error:", model, lastError);
         // Try next model if this one times out or errors
       }
     }
 
     if (!payload || (!payload.fullName && !payload.passportNumber)) {
+      console.warn("[ai-vision] all models failed. Last error:", lastError);
       return null;
     }
 
